@@ -290,7 +290,7 @@ st.markdown("### 📝 2. Captura en Tiempo Real y Validación de Datos")
 st.warning("⚠️ Todos los campos son obligatorios. Las cantidades se calculan al instante en Moneda Nacional Mexicana (MXN).")
 
 # Selección de sucursal fuera para actualizar costo al instante
-sitio = st.selectbox("🏢 Sitio / Sucursal*", SUCURSALES_LISTA, key="select_sitio", on_change=actualizar_costo_sucursal)
+sitio = st.selectbox("🏢 Sitio / Sucursal*", SUCURALES_LISTA if "SUCURSALES_LISTA" in locals() else SUCURSALES_LISTA, key="select_sitio", on_change=actualizar_costo_sucursal)
 
 # Sección interactiva fuera del formulario para mostrar cálculos en vivo
 c_live1, c_live2, c_live3 = st.columns(3)
@@ -333,11 +333,12 @@ ingreso_neto_live = ingreso_bruto_live - total_gastos_live
 rentabilidad_live = (ingreso_neto_live / ingreso_bruto_live * 100) if ingreso_bruto_live > 0 else 0.0
 
 st.markdown("### 📊 Resumen Financiero en Vivo (MXN)")
-r1, r2, r3, r4 = st.columns(4)
-r1.metric("Boletos a Entregar", boletos_pagados)
-r2.metric("Total Gastos", f"${total_gastos_live:,.2f} MXN")
-r3.metric("Ingreso Neto (Utilidad)", f"${ingreso_neto_live:,.2f} MXN", delta=f"${ingreso_neto_live:,.2f} MXN")
-r4.metric("Rentabilidad (%)", f"{rentabilidad_live:.2f}%")
+r1, r2, r3, r4, r5 = st.columns(5)
+r1.metric("Boletos Pagados", boletos_pagados)
+r2.metric("Ingreso Bruto", f"${ingreso_bruto_live:,.2f} MXN")
+r3.metric("Total Gastos", f"${total_gastos_live:,.2f} MXN")
+r4.metric("Ingreso Neto (Utilidad)", f"${ingreso_neto_live:,.2f} MXN", delta=f"${ingreso_neto_live:,.2f} MXN")
+r5.metric("Rentabilidad (%)", f"{rentabilidad_live:.2f}%")
 
 st.markdown("---")
 
@@ -394,4 +395,4 @@ if st.session_state.registros:
     cols_super = [c for c in ["Fecha", "Sitio / Unidad", "Boletos Pagados (A Entregar)", "Ingreso Bruto (MXN)", "Total Gastos y Nóminas (MXN)", "Ingreso Neto / Utilidad (MXN)", "Rentabilidad (%)", "Elaboró", "Recibe"] if c in df_reportes.columns]
     st.dataframe(df_reportes[cols_super], use_container_width=True)
     st.info("ℹ️ Nota: La descarga del archivo consolidado de Excel con el análisis financiero completo está reservada exclusivamente para el contador Víctor.")
-                
+    
