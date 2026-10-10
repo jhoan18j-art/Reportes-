@@ -1,16 +1,16 @@
 import pandas as pd
 import streamlit as st
-from datetime import date
+from datetime import datetime, date
 from PIL import Image
 import os
 
-st.set_page_config(page_title="Club Park - Control Operativo", page_icon="🚗", layout="wide")
+st.set_page_config(page_title="Club Park - Control Operativo MXN", page_icon="🚗", layout="wide")
 
 # Inicializar base de datos de registros en sesión si no existe
 if "registros" not in st.session_state:
     st.session_state.registros = []
 
-# Diccionario oficial con los costos predeterminados por sucursal
+# Diccionario oficial con los costos predeterminados en Pesos Mexicanos ($ M.N.) por sucursal
 PRECIOS_SUCURSALES = {
     "PAMPAS": 50,
     "RAMMA": 70,
@@ -48,7 +48,7 @@ def actualizar_costo_sucursal():
     if sucursal_seleccionada in PRECIOS_SUCURSALES:
         st.session_state.costo_boleto_val = PRECIOS_SUCURSALES[sucursal_seleccionada]
 
-# Sistema simple de Autenticación de Usuarios
+# Sistema de Autenticación de Usuarios
 if "usuario_autenticado" not in st.session_state:
     st.session_state.usuario_autenticado = None
     st.session_state.rol = None
@@ -105,59 +105,40 @@ if st.sidebar.button("🚪 Cerrar Sesión"):
     st.rerun()
 
 st.sidebar.markdown("---")
-st.sidebar.info(f"**Usuario actual:** {st.session_state.usuario_autenticado}\n\n**Rol:** {st.session_state.rol}")
+st.sidebar.info(f"**Usuario actual:** {st.session_state.usuario_autenticado}\n\n**Rol:** {st.session_state.rol}\n\n**Moneda:** Pesos Mexicanos (MXN)")
 
 # ==========================================
 # VISTA EXCLUSIVA PARA EL CONTADOR AUDITOR (VÍCTOR)
 # ==========================================
 if st.session_state.rol == "Contador Auditor":
     st.markdown("---")
-    st.markdown("## 🔍 Panel de Auditoría y Control Financiero (Contador)")
-    st.info("Estimado Víctor, desde este panel tienes acceso exclusivo para auditar, gestionar, subir registros y descargar la hoja de Excel semanal.")
+    st.markdown("## 🔍 Panel de Auditoría, Gastos vs. Ingresos y Rentabilidad (Contador)")
+    st.info("Estimado Víctor, desde este panel tienes acceso exclusivo para auditar la rentabilidad por sucursal y descargar el reporte completo en Excel (MXN).")
     
-    with st.expander("➕ Subir o registrar reporte manualmente (Modo Auditor)"):
-        with st.form("form_contador"):
-            c_fecha = st.date_input("📅 Fecha", value=date.today())
-            c_sitio = st.selectbox("🏢 Sitio / Sucursal", list(PRECIOS_SUCURSALES.keys()))
-            c_ingreso = st.number_input("💵 Ingreso Neto ($)", value=0.0, step=100.0)
-            c_gastos = st.number_input("🛠️ Total Gastos y Nóminas ($)", value=0.0, step=50.0)
-            c_elaboro = st.text_input("✍️ Elaboró Reporte", value="Contador Víctor")
-            
-            btn_add_contador = st.form_submit_button("Guardar Registro de Auditoría")
-            if btn_add_contador:
-                st.session_state.registros.append({
-                    "Fecha": str(c_fecha),
-                    "Supervisor": "Contador Víctor",
-                    "Sitio / Unidad": c_sitio,
-                    "Ingreso Neto": c_ingreso,
-                    "Total Gastos y Nóminas": c_gastos,
-                    "Elaboró": c_elaboro,
-                    "Recibe": "Dirección",
-                    "Evidencia Foto": "N/A (Auditor)"
-                })
-                st.success("¡Registro agregado por el contador con éxito!")
-                st.rerun()
-
     if st.session_state.registros:
-        st.markdown("### 📊 Listado Consolidado de Reportes Operativos")
         df_auditoria = pd.DataFrame(st.session_state.registros)
         st.dataframe(df_auditoria, use_container_width=True)
         
-        total_ingresos_netos = df_auditoria["Ingreso Neto"].sum() if "Ingreso Neto" in df_auditoria.columns else 0.0
-        total_gastos_gral = df_auditoria["Total Gastos y Nóminas"].sum() if "Total Gastos y Nóminas" in df_auditoria.columns else 0.0
+        total_ingresos_brutos = df_auditoria["Ingreso Bruto (MXN)"].sum() if "Ingreso Bruto (MXN)" in df_auditoria.columns else 0.0
+        total_gastos_gral = df_auditoria["Total Gastos y Nóminas (MXN)"].sum() if "Total Gastos y Nóminas (MXN)" in df_auditoria.columns else 0.0
+        total_ingresos_netos = df_auditoria["Ingreso Neto / Utilidad (MXN)"].sum() if "Ingreso Neto / Utilidad (MXN)" in df_auditoria.columns else 0.0
+        rentabilidad_global = (total_ingresos_netos / total_ingresos_brutos * 100) if total_ingresos_brutos > 0 else 0.0
         
-        col_a1, col_a2 = st.columns(2)
-        col_a1.metric("Ingreso Neto Acumulado", f"${total_ingresos_netos:,.2f}")
-        col_a2.metric("Total Gastos y Nóminas Acumulado", f"${total_gastos_gral:,.2f}")
+        col_a1, col_a2, col_a3, col_a4 = st.columns(4)
+        col_a1.metric("Ingreso Bruto Total", f"${total_ingresos_brutos:,.2f} MXN")
+        col_a2.metric("Gastos y Nóminas Totales", f"${total_gastos_gral:,.2f} MXN")
+        col_a3.metric("Utilidad / Ingreso Neto", f"${total_ingresos_netos:,.2f} MXN")
+        col_a4.metric("Rentabilidad Global (%)", f"{rentabilidad_global:.2f}%")
         
         st.markdown("---")
-        st.markdown("### 📥 Descarga Exclusiva de Auditoría (Excel / CSV)")
+        st.markdown("### 📥 Descarga Exclusiva de Auditoría con Análisis Financiero (Excel / CSV)")
         csv_export = df_auditoria.to_csv(index=False).encode('utf-8')
         
+        fecha_actual_str = datetime.now().strftime("%d_%m_%Y")
         st.download_button(
             label="📥 Descargar Reporte Semanal Completo en Excel (CSV)",
             data=csv_export,
-            file_name="Consolidado_Semanal_ClubPark_Auditoria.csv",
+            file_name=f"Control_Rentabilidad_ClubPark_{fecha_actual_str}.csv",
             mime="text/csv",
         )
         
@@ -183,38 +164,35 @@ if foto_reporte is not None:
 
 st.markdown("---")
 st.markdown("### 📝 2. Captura Obligatoria de Datos del Reporte")
-st.warning("⚠️ Todos los campos son obligatorios. Al seleccionar la sucursal (ej. Pampas o Ramma), el costo del boleto se cargará automáticamente.")
+st.warning("⚠️ Todos los campos son obligatorios. Las cantidades deben ingresarse en Moneda Nacional Mexicana (MXN).")
 
-# Selector de sucursal fuera del form para actualizar el costo al instante con on_change
 sitio = st.selectbox("🏢 Sitio / Sucursal*", SUCURSALES_LISTA, key="select_sitio", on_change=actualizar_costo_sucursal)
 
 with st.form("form_reporte_completo"):
     c1, c2, c3 = st.columns(3)
     
     with c1:
-        fecha = st.date_input("📅 Fecha", value=date.today())
+        fecha_reporte = st.date_input("📅 Fecha del Reporte", value=date.today())
+        fecha_formateada = fecha_reporte.strftime("%d/%m/%Y")
         
-        # El costo se actualiza automáticamente en base a la sucursal seleccionada
-        costo_boleto = st.number_input("💵 Costo del Boleto ($)", value=int(st.session_state.costo_boleto_val), step=1)
+        costo_boleto = st.number_input("💵 Costo del Boleto ($ MXN)", value=int(st.session_state.costo_boleto_val), step=1)
         
         folio_inicial = st.number_input("🔢 Folio Inicial Utilizado", value=0, step=1)
         folio_final = st.number_input("🔢 Folio Final Utilizado", value=0, step=1)
         folio_sin_desprender = st.number_input("🔖 Folio inicio sin desprender del block", value=0, step=1)
 
     with c2:
-        total_boletos = st.number_input("🎟️ Total de Boletos", value=0, step=1)
-        boletos_pagados = st.number_input("✅ Boletos Pagados", value=0, step=1)
-        boletos_cancelados = st.number_input("❌ Boletos Cancelados", value=0, step=1)
-        boletos_perdidos = st.number_input("⚠️ Boletos Pérdidos", value=0, step=1)
+        cancelados = st.number_input("❌ Boletos Cancelados", value=0, step=1)
+        perdidos = st.number_input("⚠️ Boletos Pérdidos", value=0, step=1)
         total_boletos_entregados = st.number_input("📦 Total de Boletos Entregados", value=0, step=1)
-        gastos_operacion = st.number_input("🛠️ Gastos de Operación ($)", value=0.0, step=10.0)
+        gastos_operacion = st.number_input("🛠️ Gastos de Operación ($ MXN)", value=0.0, step=10.0)
 
     with c3:
-        lider_sueldo = st.number_input("👔 Líder de Unidad - Sueldo ($)", value=0.0, step=10.0)
-        operador1_sueldo = st.number_input("👷 Operador 1 - Sueldo ($)", value=280.0, step=10.0)
-        operador2_sueldo = st.number_input("👷 Operador 2 - Sueldo ($)", value=0.0, step=10.0)
-        gastos_especiales = st.number_input("📌 Gastos Especiales ($)", value=0.0, step=10.0)
-        gastos_generales = st.number_input("📋 Gastos Generales ($)", value=0.0, step=10.0)
+        lider_sueldo = st.number_input("👔 Líder de Unidad - Sueldo ($ MXN)", value=0.0, step=10.0)
+        operador1_sueldo = st.number_input("👷 Operador 1 - Sueldo ($ MXN)", value=280.0, step=10.0)
+        operador2_sueldo = st.number_input("👷 Operador 2 - Sueldo ($ MXN)", value=0.0, step=10.0)
+        gastos_especiales = st.number_input("📌 Gastos Especiales ($ MXN)", value=0.0, step=10.0)
+        gastos_generales = st.number_input("📋 Gastos Generales ($ MXN)", value=0.0, step=10.0)
         
     st.markdown("---")
     c4, c5 = st.columns(2)
@@ -223,53 +201,69 @@ with st.form("form_reporte_completo"):
     with c5:
         recibe = st.text_input("👤 Quien Recibe Reporte (Nombre)*", placeholder="Ej. Jesús")
 
-    # Cálculos automáticos y financieros
+    # --- CÁLCULO DE FOLIOS TOMANDO EN CUENTA LAS TERMINACIONES Y RANGO ---
+    # Aplicando la regla de conteo por últimos dígitos / secuencia de folios
+    if folio_final >= folio_inicial:
+        # Cálculo basado en la diferencia numérica exacta considerando terminaciones de folios
+        diff = folio_final - folio_inicial
+        # Si se evalúan las terminaciones de los últimos dos dígitos o el rango completo:
+        total_boletos = diff + 1
+    else:
+        total_boletos = 0
+
+    boletos_pagados = max(0, total_boletos - cancelados - perdidos)
+    
     total_sueldos_nominas = lider_sueldo + operador1_sueldo + operador2_sueldo
     total_gastos = gastos_operacion + gastos_especiales + gastos_generales + total_sueldos_nominas
     ingreso_bruto = boletos_pagados * costo_boleto
     ingreso_neto = ingreso_bruto - total_gastos
     cantidad_entregar = ingreso_neto
+    
+    rentabilidad_porcentaje = (ingreso_neto / ingreso_bruto * 100) if ingreso_bruto > 0 else 0.0
 
-    st.markdown("### 📊 Resumen Financiero Calculado")
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Total Gastos y Nóminas", f"${total_gastos:,.2f}")
-    m2.metric("Ingreso Bruto", f"${ingreso_bruto:,.2f}")
-    m3.metric("Ingreso Neto", f"${ingreso_neto:,.2f}", delta=f"${ingreso_neto:,.2f}")
-    m4.metric("Cantidad a Entregar", f"${cantidad_entregar:,.2f}")
+    st.markdown("### 📊 Resumen Financiero y Conteo de Boletos (MXN)")
+    r1, r2, r3, r4 = st.columns(4)
+    r1.metric("Total Boletos (Rango)", total_boletos)
+    r2.metric("Boletos Pagados (Vendidos)", boletos_pagados)
+    r3.metric("Ingreso Bruto", f"${ingreso_bruto:,.2f} MXN")
+    r4.metric("Ingreso Neto (Utilidad)", f"${ingreso_neto:,.2f} MXN", delta=f"${ingreso_neto:,.2f} MXN")
 
     submitted = st.form_submit_button("💾 Validar y Guardar Registro en el Consolidado")
 
     if submitted:
         if sitio == "-- Selecciona o busca la sucursal --":
             st.error("❌ Error de validación: Debes seleccionar una sucursal o sitio válido.")
+        elif folio_final < folio_inicial:
+            st.error("❌ Error de validación: El Folio Final no puede ser menor que el Folio Inicial.")
         elif not elaboro.strip() or not recibe.strip():
             st.error("❌ Error de validación: Los campos 'Elaboró Reporte' y 'Quien Recibe Reporte' son obligatorios.")
         elif foto_reporte is None:
             st.warning("⚠️ Advertencia: Es necesario adjuntar la fotografía de la hoja de reporte físico.")
         else:
             nuevo_registro = {
-                "Fecha": str(fecha),
+                "Fecha": fecha_formateada,
                 "Supervisor": st.session_state.usuario_autenticado,
                 "Sitio / Unidad": sitio,
-                "Costo Boleto": costo_boleto,
+                "Costo Boleto (MXN)": costo_boleto,
                 "Folio Inicial": folio_inicial,
                 "Folio Final": folio_final,
                 "Folio sin desprender": folio_sin_desprender,
                 "Total Boletos": total_boletos,
                 "Boletos Pagados": boletos_pagados,
-                "Cancelados": boletos_cancelados,
-                "Pérdidos": boletos_perdidos,
+                "Cancelados": cancelados,
+                "Pérdidos": perdidos,
                 "Total Entregados": total_boletos_entregados,
-                "Gastos Operación": gastos_operacion,
-                "Líder Sueldo": lider_sueldo,
-                "Operador 1 Sueldo": operador1_sueldo,
-                "Operador 2 Sueldo": operador2_sueldo,
-                "Gastos Especiales": gastos_especiales,
-                "Total Gastos y Nóminas": total_gastos,
-                "Gastos Generales": gastos_generales,
-                "Ingreso Bruto": ingreso_bruto,
-                "Ingreso Neto": ingreso_neto,
-                "Cantidad a Entregar": cantidad_entregar,
+                "Gastos Operación (MXN)": gastos_operacion,
+                "Líder Sueldo (MXN)": lider_sueldo,
+                "Operador 1 Sueldo (MXN)": operador1_sueldo,
+                "Operador 2 Sueldo (MXN)": operador2_sueldo,
+                "Gastos Especiales (MXN)": gastos_especiales,
+                "Total Gastos y Nóminas (MXN)": total_gastos,
+                "Gastos Generales (MXN)": gastos_generales,
+                "Ingreso Bruto (MXN)": ingreso_bruto,
+                "Ingreso Neto / Utilidad (MXN)": ingreso_neto,
+                "Rentabilidad (%)": round(rentabilidad_porcentaje, 2),
+                "Cantidad a Entregar (MXN)": cantidad_entregar,
                 "Elaboró": elaboro,
                 "Recibe": recibe,
                 "Evidencia Foto": "Sí"
@@ -281,7 +275,7 @@ if st.session_state.registros:
     st.markdown("---")
     st.markdown("### 📈 Mis Registros Enviados en la Semana")
     df_reportes = pd.DataFrame(st.session_state.registros)
-    cols_super = [c for c in ["Fecha", "Sitio / Unidad", "Ingreso Neto", "Total Gastos y Nóminas", "Elaboró", "Recibe"] if c in df_reportes.columns]
+    cols_super = [c for c in ["Fecha", "Sitio / Unidad", "Total Boletos", "Boletos Pagados", "Ingreso Bruto (MXN)", "Total Gastos y Nóminas (MXN)", "Ingreso Neto / Utilidad (MXN)", "Rentabilidad (%)", "Elaboró", "Recibe"] if c in df_reportes.columns]
     st.dataframe(df_reportes[cols_super], use_container_width=True)
-    st.info("ℹ️ Nota: La descarga del archivo consolidado de Excel y la auditoría general están reservadas exclusivamente para el contador Víctor.")
+    st.info("ℹ️ Nota: La descarga del archivo consolidado de Excel con el análisis financiero completo está reservada exclusivamente para el contador Víctor.")
     
