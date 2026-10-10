@@ -39,6 +39,15 @@ PRECIOS_SUCURSALES = {
 
 SUCURSALES_LISTA = ["-- Selecciona o busca la sucursal --"] + list(PRECIOS_SUCURSALES.keys())
 
+# Inicializar costo en session_state si no existe
+if "costo_boleto_val" not in st.session_state:
+    st.session_state.costo_boleto_val = 40
+
+def actualizar_costo_sucursal():
+    sucursal_seleccionada = st.session_state.get("select_sitio")
+    if sucursal_seleccionada in PRECIOS_SUCURSALES:
+        st.session_state.costo_boleto_val = PRECIOS_SUCURSALES[sucursal_seleccionada]
+
 # Sistema simple de Autenticación de Usuarios
 if "usuario_autenticado" not in st.session_state:
     st.session_state.usuario_autenticado = None
@@ -145,7 +154,6 @@ if st.session_state.rol == "Contador Auditor":
         st.markdown("### 📥 Descarga Exclusiva de Auditoría (Excel / CSV)")
         csv_export = df_auditoria.to_csv(index=False).encode('utf-8')
         
-        # ÚNICO USUARIO CON PERMISO DE DESCARGA
         st.download_button(
             label="📥 Descargar Reporte Semanal Completo en Excel (CSV)",
             data=csv_export,
@@ -175,18 +183,19 @@ if foto_reporte is not None:
 
 st.markdown("---")
 st.markdown("### 📝 2. Captura Obligatoria de Datos del Reporte")
-st.warning("⚠️ Todos los campos son obligatorios. Al seleccionar la sucursal, el costo del boleto se cargará automáticamente según la tarifa establecida.")
+st.warning("⚠️ Todos los campos son obligatorios. Al seleccionar la sucursal (ej. Pampas o Ramma), el costo del boleto se cargará automáticamente.")
+
+# Selector de sucursal fuera del form para actualizar el costo al instante con on_change
+sitio = st.selectbox("🏢 Sitio / Sucursal*", SUCURSALES_LISTA, key="select_sitio", on_change=actualizar_costo_sucursal)
 
 with st.form("form_reporte_completo"):
     c1, c2, c3 = st.columns(3)
     
     with c1:
         fecha = st.date_input("📅 Fecha", value=date.today())
-        sitio = st.selectbox("🏢 Sitio / Sucursal*", SUCURSALES_LISTA)
         
-        # Determinar costo automático según sucursal seleccionada
-        costo_sugerido = PRECIOS_SUCURSALES.get(sitio, 40) if sitio in PRECIOS_SUCURSALES else 40
-        costo_boleto = st.number_input("💵 Costo del Boleto ($)", value=int(costo_sugerido), step=1)
+        # El costo se actualiza automáticamente en base a la sucursal seleccionada
+        costo_boleto = st.number_input("💵 Costo del Boleto ($)", value=int(st.session_state.costo_boleto_val), step=1)
         
         folio_inicial = st.number_input("🔢 Folio Inicial Utilizado", value=0, step=1)
         folio_final = st.number_input("🔢 Folio Final Utilizado", value=0, step=1)
