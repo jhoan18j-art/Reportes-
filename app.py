@@ -380,12 +380,19 @@ if foto_reporte is not None:
     imagen = Image.open(foto_reporte)
     st.image(imagen, caption="Vista previa de la hoja de reporte física", width=350)
     
-    api_key_env = os.environ.get("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", "")
+    api_key_env = (
+        os.environ.get("GEMINI_API_KEY")
+        or st.secrets.get("GEMINI_API_KEY", "")
+    )
+
     if GENAI_AVAILABLE and api_key_env:
         if st.button("🤖 Analizar Foto y Llenar Datos Automáticamente con IA"):
+
             with st.spinner("Analizando reporte físico y leyendo folios/gastos..."):
+
                 prompt_text = (
-                    "Analiza esta imagen de reporte de valet parking y devuelve ÚNICAMENTE un objeto JSON válido con este formato exacto:\n"
+                    "Analiza esta imagen de reporte de valet parking y devuelve "
+                    "ÚNICAMENTE un objeto JSON válido con este formato exacto:\n"
                     "{\n"
                     '  "folio_inicial": 0,\n'
                     '  "folio_final": 0,\n'
@@ -397,24 +404,97 @@ if foto_reporte is not None:
                     '  "elaboro": "",\n'
                     '  "recibe": ""\n'
                     "}\n"
-                    "Devuelve números enteros para folios/boletos y flotantes para gastos."
+                    "Devuelve números enteros para folios y boletos, "
+                    "y números decimales para gastos. "
+                    "No inventes datos que no sean legibles."
                 )
-                
+
                 texto_res = None
+
                 try:
                     # Intento con la librería nueva
+                    from google import genai
+
                     client = genai.Client(api_key=api_key_env)
+
                     response = client.models.generate_content(
                         model="gemini-2.5-flash",
                         contents=[prompt_text, imagen]
                     )
-                    texto_res = response.text.strip().replace("```json", "").replace("```", "")
-                except Exception:
+
+                    texto_res = (
+                        response.text.strip()
+                        .replace("```json", "")
+                        .replace("```", "")
+                        .strip()
+                    )
+
+                except Exception as error_nuevo:
                     try:
-                        # Fallback con la librería legacy
+                        # Intento alternativo con la librería anterior
                         import google.generativeai as genai_legacy
+
                         genai_legacy.configure(api_key=api_key_env)
-                        model_legacy = genai_legacy.GenerativeModel("gemini-1.5-flash")
-                        response = model_legacy.generate_content([prompt_text, imagen])
-                        texto_res = response.text.strip().replace("```json", "").replace("```", "")
-                    
+
+                        model_legacy = genai_legacy.GenerativeModel(
+                            "gemini-1.5-flash"
+                        )
+
+                        response = model_legacy.generate_content(
+                            [prompt_text, imagen]
+                        )
+
+                        texto_res = (
+                            response.text.strip()
+                            .replace("```json", "")
+                            .replace("```", "")
+                            .strip()
+                        )
+
+                    except Exception as error_legacy:
+                        st.error(
+                            "No se pudo analizar la fotografía con Gemini. "
+                            "Verifica la API KEY y las dependencias."
+                        )
+                        st.caption(
+                            f"Error de la librería nueva: {error_nuevo}"
+                        )
+                        st.caption(
+                            f"Error de la librería anterior: {error_legacy}"
+                        )
+
+                if texto_res:
+                    try:
+                        datos_ia = json.loads(texto_res)
+
+                        st.session_state["datos_ia"] = datos_ia
+
+                        st.success(
+                            "Fotografía analizada correctamente. "
+                            "Revisa los datos antes de validar el reporte."
+                        )
+
+                        st.json(datos_ia)
+
+                    except json.JSONDecodeError:
+                        st.error(
+                            "La IA no devolvió un JSON válido. "
+                            "Intenta analizar nuevamente la fotografía."
+                        )
+                        st.text_area(
+                            "Respuesta recibida",
+                            texto_res,
+                            height=150
+                        )
+
+    elif not GENAI_AVAILABLE:
+        st.warning(
+            "La librería de Gemini no está instalada. "
+            "Agrega google-genai a requirements.txt."
+        )
+
+    else:
+        st.warning(
+            "Configura GEMINI_API_KEY en los Secrets de Streamlit "
+            "para habilitar el análisis automático."
+        )
