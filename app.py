@@ -175,9 +175,61 @@ st.sidebar.info(f"**Usuario actual:** {st.session_state.usuario_autenticado}\n\n
 # ==========================================
 if st.session_state.rol == "Contador Auditor":
     st.markdown("---")
-    st.markdown("## 🔍 Panel de Auditoría, Balance Financiero y Control de Reportes (Contador)")
-    st.info("Estimado Víctor, desde este panel tienes acceso al control masivo de reportes guardados permanentemente, balance semanal por unidad y descarga de la hoja de Excel consolidada.")
+    st.markdown("## 🔍 Panel de Auditoría, Balance Financiero y Control de Eventos (Contador)")
+    st.info("Estimado Víctor, desde este panel tienes acceso al control masivo, balance semanal y facultad especial para registrar reportes de eventos y fines de semana.")
     
+    # Sección especial para que el contador suba reportes de eventos extraordinarios
+    with st.expander("🎪 Registrar Reporte de Eventos / Fines de Semana (Facultad del Contador)"):
+        st.warning("Como Contador Auditor, puedes dar de alta reportes adicionales de eventos (múltiples por salón/día) en cualquier fecha.")
+        with st.form("form_evento_contador"):
+            ev_fecha = st.date_input("Fecha del Evento", value=date.today())
+            ev_sucursal = st.selectbox("Sucursal / Salón de Evento", SUCURSALES_LISTA, key="ev_suc")
+            ev_costo = st.number_input("Costo por Boleto ($ MXN)", value=100, step=1)
+            ev_ini = st.number_input("Folio Inicial", value=1, step=1)
+            ev_fin = st.number_input("Folio Final", value=50, step=1)
+            ev_gastos = st.number_input("Gastos del Evento ($ MXN)", value=0.0, step=10.0)
+            ev_elaboro = st.text_input("Personal que elaboró", value="Staff Eventos")
+            ev_recibe = st.text_input("Recibe", value="Víctor (Contador)")
+            
+            btn_guardar_evento = st.form_submit_button("🚀 Registrar Evento Extraordinario")
+            if btn_guardar_evento:
+                if ev_sucursal == "-- Selecciona o busca la sucursal --":
+                    st.error("Selecciona una sucursal válida.")
+                else:
+                    boletos_evt = max(0, (ev_fin - ev_ini) + 1)
+                    bruto_evt = boletos_evt * ev_costo
+                    neto_evt = bruto_evt - ev_gastos
+                    
+                    reg_evento = {
+                        "Fecha": ev_fecha.strftime("%d/%m/%Y"),
+                        "Supervisor": "Víctor (Contador - Evento)",
+                        "Sitio / Unidad": ev_sucursal,
+                        "Costo Boleto (MXN)": ev_costo,
+                        "Folio Inicial": ev_ini,
+                        "Folio Final": ev_fin,
+                        "Folio sin desprender": 0,
+                        "Total Boletos Entregados": boletos_evt,
+                        "Boletos Pagados (A Entregar)": boletos_evt,
+                        "Cancelados": 0,
+                        "Pérdidos": 0,
+                        "Gastos de Operación": "Evento Especial",
+                        "Gastos Especiales (MXN)": ev_gastos,
+                        "Gastos Generales (MXN)": 0.0,
+                        "Total Gastos y Nóminas (MXN)": ev_gastos,
+                        "Ingreso Bruto (MXN)": bruto_evt,
+                        "Ingreso Neto / Utilidad (MXN)": neto_evt,
+                        "Rentabilidad (%)": 100.0 if bruto_evt > 0 else 0.0,
+                        "Cantidad a Entregar (MXN)": neto_evt,
+                        "Elaboró": ev_elaboro,
+                        "Recibe": ev_recibe,
+                        "Evidencia Foto": "N/A (Autorizado por Contador)",
+                        "foto_bytes": None
+                    }
+                    st.session_state.registros.append(reg_evento)
+                    guardar_registros_permanentes(st.session_state.registros)
+                    st.success(f"¡Reporte de evento para '{ev_sucursal}' registrado exitosamente!")
+                    st.rerun()
+
     if st.session_state.registros:
         registros_limpios = []
         for reg in st.session_state.registros:
@@ -193,7 +245,7 @@ if st.session_state.rol == "Contador Auditor":
         c_u1, c_u2, c_u3 = st.columns(3)
         c_u1.metric("Víctor Manuel", f"{v_manuel_count} reportes")
         c_u2.metric("José de Jesús", f"{j_jesus_count} reportes")
-        c_u3.metric("Víctor (Contador)", f"{v_contador_count} reportes")
+        c_u3.metric("Víctor (Contador / Eventos)", f"{v_contador_count} reportes")
 
         st.markdown("---")
         st.markdown("### 🏢 Balance Semanal por Unidad / Servicio")
@@ -245,7 +297,7 @@ if st.session_state.rol == "Contador Auditor":
             st.success("Se han borrado todos los registros guardados en la base de datos.")
             st.rerun()
     else:
-        st.warning("⚠️ No hay registros cargados en el sistema todavía por parte de los supervisores.")
+        st.warning("⚠️ No hay registros cargados en el sistema todavía.")
         
     st.stop()
 
@@ -253,6 +305,14 @@ if st.session_state.rol == "Contador Auditor":
 # VISTA PARA SUPERVISORES
 # ==========================================
 st.markdown("---")
+
+# Indicador de meta semanal / diaria para supervisores
+dia_semana_actual = date.today().weekday() # 0 al 4 es lunes a viernes
+if dia_semana_actual < 5:
+    st.info("📋 **Control Operativo (Lunes a Viernes):** Meta establecida para supervisores: **15 reportes diarios** requeridos por operación regular.")
+else:
+    st.info("📅 **Control de Fines de Semana / Eventos:** Los reportes extraordinarios y de múltiples eventos en salón pueden ser cargados y respaldados directamente por el Contador Víctor.")
+
 st.markdown("### 📸 1. Evidencia Fotográfica del Reporte Físico")
 foto_reporte = st.file_uploader("Tomar o subir foto de la hoja de reporte", type=["jpg", "jpeg", "png"], key="foto")
 
@@ -364,74 +424,4 @@ with st.form("form_reporte_guardar"):
     with c4:
         elaboro = st.text_input("✍️ Elaboró Reporte (Nombre)*", value=str(st.session_state.elaboro_val), placeholder="Ej. Gaby")
     with c5:
-        recibe = st.text_input("👤 Quien Recibe Reporte (Nombre)*", value=str(st.session_state.recibe_val), placeholder="Ej. Jesús")
-
-    submitted = st.form_submit_button("💾 Validar y Guardar Registro en el Consolidado")
-
-    if submitted:
-        if sitio == "-- Selecciona o busca la sucursal --":
-            st.error("❌ Error de validación: Debes seleccionar una sucursal o sitio válido.")
-        elif folio_inicial == 0 and folio_final == 0:
-            st.error("❌ Error de validación: Debes capturar el Folio Inicial y Folio Final.")
-        elif folio_final < folio_inicial:
-            st.error("❌ Error de validación: El Folio Final no puede ser menor que el Folio Inicial.")
-        elif not elaboro.strip() or not recibe.strip():
-            st.error("❌ Error de validación: Los campos 'Elaboró Reporte' y 'Quien Recibe Reporte' son obligatorios.")
-        elif foto_reporte is None:
-            st.warning("⚠️ Advertencia: Es necesario adjuntar la fotografía de la hoja de reporte físico.")
-        else:
-            foto_bytes = None
-            if foto_reporte is not None:
-                img_to_compress = Image.open(foto_reporte)
-                img_to_compress.thumbnail((800, 800))
-                img_io = io.BytesIO()
-                img_to_compress.save(img_io, format="JPEG", quality=75)
-                foto_bytes = img_io.getvalue()
-            
-            nuevo_registro = {
-                "Fecha": fecha_formateada,
-                "Supervisor": st.session_state.usuario_autenticado,
-                "Sitio / Unidad": sitio,
-                "Costo Boleto (MXN)": costo_boleto,
-                "Folio Inicial": folio_inicial,
-                "Folio Final": folio_final,
-                "Folio sin desprender": folio_sin_desprender,
-                "Total Boletos Entregados": total_boletos_entregados,
-                "Boletos Pagados (A Entregar)": boletos_pagados,
-                "Cancelados": cancelados,
-                "Pérdidos": perdidos,
-                "Gastos de Operación": "Título Informativo",
-                "Gastos Especiales (MXN)": gastos_especiales,
-                "Gastos Generales (MXN)": gastos_generales,
-                "Total Gastos y Nóminas (MXN)": total_gastos_live,
-                "Ingreso Bruto (MXN)": ingreso_bruto_live,
-                "Ingreso Neto / Utilidad (MXN)": ingreso_neto_live,
-                "Rentabilidad (%)": round(rentabilidad_live, 2),
-                "Cantidad a Entregar (MXN)": ingreso_neto_live,
-                "Elaboró": elaboro,
-                "Recibe": recibe,
-                "Evidencia Foto": "Sí",
-                "foto_bytes": foto_bytes
-            }
-            st.session_state.registros.append(nuevo_registro)
-            guardar_registros_permanentes(st.session_state.registros)
-            
-            st.success(f"¡El reporte del sitio '{sitio}' ha sido validado y guardado PERMANENTEMENTE por {st.session_state.usuario_autenticado}!")
-
-# --- BOTÓN PARA ENVIAR NOTIFICACIÓN POR WHATSAPP ---
-if st.session_state.registros:
-    st.markdown("---")
-    st.markdown("### 💬 Enviar Notificación del Último Reporte por WhatsApp")
-    
-    ultimo = st.session_state.registros[-1]
-    
-    # Campo opcional para introducir el número telefónico de destino (ej. +52155XXXXXXXX)
-    telefono_destino = st.text_input("📱 Número de WhatsApp del Destinatario (Opcional - con lada, ej: 5215512345678):", value="")
-    
-    mensaje_wht = (
-        f"🚗 *REPORTE CLUB PARK*\n"
-        f"📅 Fecha: {ultimo['Fecha']}\n"
-        f"🏢 Sucursal: {ultimo['Sitio / Unidad']}\n"
-        f"👤 Supervisor: {ultimo['Supervisor']}\n"
-        f"💵 Ingreso Bruto: ${ultimo['Ingreso Bruto (MXN)']:,.2f} MXN\n"
-        f"🛠️ Gastos Totales: ${ultimo['Total Gast
+        recibe = st.text_input("👤 Quien Recibe Reporte (Nombre)*", value=str(st.se
