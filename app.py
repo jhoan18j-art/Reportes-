@@ -378,9 +378,12 @@ if foto_reporte is not None:
     if GENAI_AVAILABLE and api_key_env:
         if st.button("🤖 Analizar Foto y Llenar Datos Automáticamente con IA"):
             with st.spinner("Analizando reporte físico y leyendo folios/gastos..."):
+                
                 prompt_text = (
-                    "Analiza la fotografía del comprobante o reporte de valet parking. "
-                    "Extrae los datos visibles y devuelve únicamente un objeto JSON válido con estos campos: "
+                    "Analiza la fotografía del reporte de valet parking. "
+                    "Lee únicamente los datos que estén impresos y sean legibles. "
+                    "No inventes datos de gastos si no están impresos. "
+                    "Devuelve únicamente un objeto JSON válido con estos campos: "
                     '{"folio_inicial": 0, '
                     '"folio_final": 0, '
                     '"folio_sin_desprender": 0, '
@@ -390,8 +393,10 @@ if foto_reporte is not None:
                     '"gastos_generales": 0.0, '
                     '"elaboro": "", '
                     '"recibe": ""}. '
-                    "Si la imagen es un boleto individual (como un ticket con un número de folio, ej: 3554), "
-                    "coloca ese número de folio tanto en folio_inicial como en folio_final. "
+                    "Usa números enteros para los folios y números decimales "
+                    "para los gastos. Si un dato no es legible, no lo inventes."
+                )
+                
                     
                 except Exception:
                     try:
