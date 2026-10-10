@@ -294,18 +294,30 @@ if foto_reporte is not None:
                     except Exception as err:
                         st.error(f"❌ Error al conectar con la IA: {err}")
 
-                if texto_res:
-                    try:
-                        clean_json = texto_res.replace("```json", "").replace("```", "").strip()
-                        datos_ia = json.loads(clean_json)
+        if texto_res:
+            try:
+                clean_json = texto_res.replace("```json", "").replace("```", "").strip()
+                datos_ia = json.loads(clean_json)
 
-                        # Asignación segura a variables de estado
-                        st.session_state.f_ini_val = int(datos_ia.get("folio_inicial", 0) or 0)
-                        st.session_state.f_fin_val = int(datos_ia.get("folio_final", 0) or 0)
-                        st.session_state.f_sin_val = int(datos_ia.get("folio_sin_desprender", 0) or 0)
-                        st.session_state.f_can_val = int(datos_ia.get("cancelados", 0) or 0)
+                # Asignación segura a variables de estado
+                st.session_state.f_ini_val = int(datos_ia.get("folio_inicial", 0) or 0)
+                st.session_state.f_fin_val = int(datos_ia.get("folio_final", 0) or 0)
+                st.session_state.f_sin_val = int(datos_ia.get("folio_sin_desprender", 0) or 0)
+                st.session_state.f_can_val = int(datos_ia.get("cancelados", 0) or 0)
+                st.session_state.f_per_val = int(datos_ia.get("perdidos", 0) or 0)
+                st.session_state.g_esp_val = float(datos_ia.get("gastos_especiales", 0.0) or 0.0)
+                st.session_state.g_gen_val = float(datos_ia.get("gastos_generales", 0.0) or 0.0)
+                st.session_state.elaboro_val = str(datos_ia.get("elaboro", "") or "")
+                st.session_state.recibe_val = str(datos_ia.get("recibe", "") or "")
+
+                st.success("✨ ¡Datos leídos de la imagen e insertados en los campos!")
+                st.rerun()
+            except Exception as parse_err:
+                st.warning(f"⚠️ No se pudo procesar la respuesta de la IA: {parse_err}")
+
 st.markdown("---")
 st.markdown("### 📝 2. Captura / Verificación de Datos del Reporte")
+
 
 # FORMULARIO CON VALORES CONECTADOS CORRECTAMENTE AL SESSION_STATE
 with st.form("form_reporte_supervisor"):
