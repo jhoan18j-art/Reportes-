@@ -307,7 +307,7 @@ st.markdown("---")
 st.markdown("### 📝 2. Captura en Tiempo Real y Validación de Datos")
 st.warning("⚠️ Todos los campos son obligatorios. Las cantidades se calculan al instante en Moneda Nacional Mexicana (MXN).")
 
-sitio = st.selectbox("🏢 Sitio / Sucursal*", SUCURALES_LISTA if "SUCURSALES_LISTA" in locals() else SUCURSALES_LISTA, key="select_sitio", on_change=actualizar_costo_sucursal)
+sitio = st.selectbox("🏢 Sitio / Sucursal*", SUCURSALES_LISTA, key="select_sitio", on_change=actualizar_costo_sucursal)
 
 c_live1, c_live2, c_live3 = st.columns(3)
 with c_live1:
@@ -435,4 +435,5 @@ if st.session_state.registros:
         f"Elaboró: {ultimo['Elaboró']} | Recibe: {ultimo['Recibe']}"
     )
     
-    e
+    encoded_msg = urllib.parse.quote(mensaje_wht)
+    whatsa
