@@ -3,6 +3,14 @@ import streamlit as st
 from datetime import datetime, date
 from PIL import Image
 import os
+import json
+
+# Soporte opcional para análisis automático de imagen con Gemini Vision
+try:
+    import google.generativeai as genai
+    GENAI_AVAILABLE = True
+except ImportError:
+    GENAI_AVAILABLE = False
 
 st.set_page_config(page_title="Club Park - Control Operativo MXN", page_icon="🚗", layout="wide")
 
@@ -57,6 +65,11 @@ SUCURSALES_LISTA = ["-- Selecciona o busca la sucursal --"] + list(PRECIOS_SUCUR
 # Inicializar costo en session_state si no existe
 if "costo_boleto_val" not in st.session_state:
     st.session_state.costo_boleto_val = 40
+
+# Claves por defecto para auto-llenado por IA
+for key in ["f_ini", "f_fin", "f_can", "f_per", "f_sin", "g_esp", "g_gen", "elaboro_val", "recibe_val"]:
+    if key not in st.session_state:
+        st.session_state[key] = 0 if "f_" in key or "g_" in key else ""
 
 def actualizar_costo_sucursal():
     sucursal_seleccionada = st.session_state.get("select_sitio")
@@ -206,7 +219,7 @@ if st.session_state.rol == "Contador Auditor":
     st.stop()
 
 # ==========================================
-# VISTA PARA SUPERVISORES (Con actualización en tiempo real)
+# VISTA PARA SUPERVISORES (Con actualización en tiempo real y Lectura por IA)
 # ==========================================
 st.markdown("---")
 st.markdown("### 📸 1. Evidencia Fotográfica del Reporte Físico")
@@ -215,6 +228,51 @@ foto_reporte = st.file_uploader("Tomar o subir foto de la hoja de reporte", type
 if foto_reporte is not None:
     imagen = Image.open(foto_reporte)
     st.image(imagen, caption="Vista previa de la hoja de reporte física", width=350)
+    
+    # --- FUNCIÓN DE LECTURA ESTRUCTURADA POR IA VISION ---
+    api_key_env = os.environ.get("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", "")
+    if GENAI_AVAILABLE and api_key_env:
+        if st.button("🤖 Analizar Foto y Llenar Datos Automáticamente con IA"):
+            with st.spinner("Analizando reporte físico y leyendo folios/gastos..."):
+                try:
+                    genai.configure(api_key=api_key_env)
+                    model = genai.GenerativeModel("gemini-1.5-flash")
+                    
+                    prompt = """
+                    Analiza esta imagen de reporte de valet parking y devuelve ÚNICAMENTE un objeto JSON válido con este formato:
+                    {
+                        "folio_inicial": 0,
+                        "folio_final": 0,
+                        "folio_sin_desprender": 0,
+                        "cancelados": 0,
+                        "perdidos": 0,
+                        "gastos_especiales": 0.0,
+                        "gastos_generales": 0.0,
+                        "elaboro": "",
+                        "recibe": ""
+                    }
+                    Devuelve números enteros para folios/boletos y flotantes para gastos.
+                    """
+                    
+                    response = model.generate_content([prompt, imagen])
+                    texto_res = response.text.strip().replace("```json", "").replace("```", "")
+                    datos_ia = json.loads(texto_res)
+                    
+                    # Actualizar session_state con los valores extraídos por la IA
+                    st.session_state.f_ini = int(datos_ia.get("folio_inicial", 0))
+                    st.session_state.f_fin = int(datos_ia.get("folio_final", 0))
+                    st.session_state.f_sin = int(datos_ia.get("folio_sin_desprender", 0))
+                    st.session_state.f_can = int(datos_ia.get("cancelados", 0))
+                    st.session_state.f_per = int(datos_ia.get("perdidos", 0))
+                    st.session_state.g_esp = float(datos_ia.get("gastos_especiales", 0.0))
+                    st.session_state.g_gen = float(datos_ia.get("gastos_generales", 0.0))
+                    st.session_state.elaboro_val = datos_ia.get("elaboro", "")
+                    st.session_state.recibe_val = datos_ia.get("recibe", "")
+                    
+                    st.success("✨ ¡Campos autocompletados desde la fotografía exitosamente!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"No se pudo leer automáticamente la imagen: {e}")
 
 st.markdown("---")
 st.markdown("### 📝 2. Captura en Tiempo Real y Validación de Datos")
@@ -230,11 +288,11 @@ with c_live1:
     fecha_formateada = fecha_reporte.strftime("%d/%m/%Y")
     costo_boleto = st.number_input("💵 Costo del Boleto ($ MXN)", value=int(st.session_state.costo_boleto_val), step=1)
 with c_live2:
-    folio_inicial = st.number_input("🔢 Folio Inicial Utilizado", value=0, step=1, key="f_ini")
-    folio_final = st.number_input("🔢 Folio Final Utilizado", value=0, step=1, key="f_fin")
+    folio_inicial = st.number_input("🔢 Folio Inicial Utilizado", value=st.session_state.f_ini, step=1, key="f_ini")
+    folio_final = st.number_input("🔢 Folio Final Utilizado", value=st.session_state.f_fin, step=1, key="f_fin")
 with c_live3:
-    cancelados = st.number_input("❌ Boletos Cancelados", value=0, step=1, key="f_can")
-    perdidos = st.number_input("⚠️ Boletos Pérdidos", value=0, step=1, key="f_per")
+    cancelados = st.number_input("❌ Boletos Cancelados", value=st.session_state.f_can, step=1, key="f_can")
+    perdidos = st.number_input("⚠️ Boletos Pérdidos", value=st.session_state.f_per, step=1, key="f_per")
 
 # --- CÁLCULO DE FOLIOS EN TIEMPO REAL ---
 i_last = int(folio_inicial) % 100
@@ -252,11 +310,11 @@ st.markdown("### 🛠️ 3. Captura de Gastos (En Tiempo Real)")
 
 col_g1, col_g2 = st.columns(2)
 with col_g1:
-    folio_sin_desprender = st.number_input("🔖 Folio inicio sin desprender del block", value=0, step=1, key="f_sin")
+    folio_sin_desprender = st.number_input("🔖 Folio inicio sin desprender del block", value=st.session_state.f_sin, step=1, key="f_sin")
     st.markdown("#### 🛠️ Gastos de Operación")  # Título informativo
 with col_g2:
-    gastos_especiales = st.number_input("📌 Gastos Especiales ($ MXN)", value=0.0, step=10.0, key="g_esp")
-    gastos_generales = st.number_input("📋 Gastos Generales ($ MXN)", value=0.0, step=10.0, key="g_gen")
+    gastos_especiales = st.number_input("📌 Gastos Especiales ($ MXN)", value=st.session_state.g_esp, step=10.0, key="g_esp")
+    gastos_generales = st.number_input("📋 Gastos Generales ($ MXN)", value=st.session_state.g_gen, step=10.0, key="g_gen")
 
 # --- CÁLCULO TOTAL DE GASTOS Y UTILIDAD EN TIEMPO REAL ---
 total_gastos_live = gastos_especiales + gastos_generales
@@ -275,9 +333,9 @@ st.markdown("---")
 with st.form("form_reporte_guardar"):
     c4, c5 = st.columns(2)
     with c4:
-        elaboro = st.text_input("✍️ Elaboró Reporte (Nombre)*", placeholder="Ej. Gaby")
+        elaboro = st.text_input("✍️ Elaboró Reporte (Nombre)*", value=st.session_state.elaboro_val, placeholder="Ej. Gaby")
     with c5:
-        recibe = st.text_input("👤 Quien Recibe Reporte (Nombre)*", placeholder="Ej. Jesús")
+        recibe = st.text_input("👤 Quien Recibe Reporte (Nombre)*", value=st.session_state.recibe_val, placeholder="Ej. Jesús")
 
     submitted = st.form_submit_button("💾 Validar y Guardar Registro en el Consolidado")
 
