@@ -436,4 +436,4 @@ if st.session_state.registros:
     )
     
     encoded_msg = urllib.parse.quote(mensaje_wht)
-    whatsa
+    WhatsA
