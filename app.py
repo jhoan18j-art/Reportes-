@@ -418,4 +418,4 @@ if foto_reporte is not None:
                     st.session_state.f_ini = int(datos_ia.get("folio_inicial", 0))
                     st.session_state.f_fin = int(datos_ia.get("folio_final", 0))
                     st.session_state.f_sin = int(datos_ia.get("folio_sin_desprender", 0))
-    
+                    
