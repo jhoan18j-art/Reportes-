@@ -9,7 +9,7 @@ import base64
 import urllib.parse
 
 # Archivo permanente de base de datos local
-DB_FILE = "reportes_clubpark.json"
+DB_FILE = "reportes_CLUBPARK.json"
 
 # Soporte opcional para análisis automático de imagen con Gemini Vision
 try:
@@ -414,4 +414,55 @@ if foto_reporte is not None:
                     st.session_state.elaboro_val = str(datos_ia.get("elaboro", ""))
                     st.session_state.elaboro_val = str(datos_ia.get("elaboro", ""))
                     st.session_state.recibe_val = str(datos_ia.get("recibe", ""))
+                    
+        if st.button("🤖 Analizar Foto y Llenar Datos Automáticamente con IA"):
+            with st.spinner("Analizando reporte físico y leyendo folios/gastos..."):
+                try:
+                    genai.configure(api_key=api_key_env)
+                    model = genai.GenerativeModel("gemini-1.5-flash")
+
+                    prompt = """
+                    Analiza esta imagen de reporte de valet parking.
+                    Devuelve ÚNICAMENTE un objeto JSON válido con este formato:
+                    {
+                        "folio_inicial": 0,
+                        "folio_final": 0,
+                        "folio_sin_desprender": 0,
+                        "cancelados": 0,
+                        "perdidos": 0,
+                        "gastos_especiales": 0.0,
+                        "gastos_generales": 0.0,
+                        "elaboro": "",
+                        "recibe": ""
+                    }
+                    Usa números para folios y gastos.
+                    Si un dato no es legible, utiliza 0 o una cadena vacía.
+                    """
+
+                    response = model.generate_content([prompt, imagen])
+
+                    texto_res = response.text.strip()
+                    texto_res = texto_res.replace("```json", "").replace("```", "").strip()
+
+                    datos_ia = json.loads(texto_res)
+
+                    st.session_state.f_ini = int(datos_ia.get("folio_inicial", 0))
+                    st.session_state.f_fin = int(datos_ia.get("folio_final", 0))
+                    st.session_state.f_sin = int(datos_ia.get("folio_sin_desprender", 0))
+                    st.session_state.f_can = int(datos_ia.get("cancelados", 0))
+                    st.session_state.f_per = int(datos_ia.get("perdidos", 0))
+                    st.session_state.g_esp = float(datos_ia.get("gastos_especiales", 0.0))
+                    st.session_state.g_gen = float(datos_ia.get("gastos_generales", 0.0))
+                    st.session_state.elaboro_val = str(datos_ia.get("elaboro", ""))
+                    st.session_state.recibe_val = str(datos_ia.get("recibe", ""))
+
+                    st.success("Datos extraídos de la fotografía correctamente.")
+                    st.rerun()
+
+                except json.JSONDecodeError:
+                    st.error("La IA no devolvió un JSON válido. Intenta analizar la fotografía nuevamente.")
+
+                except Exception as e:
+                    st.error(f"Error al analizar la fotografía: {e}")
+                    
 
