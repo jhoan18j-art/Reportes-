@@ -422,18 +422,16 @@ with st.form("form_reporte_guardar"):
 if st.session_state.registros:
     st.markdown("---")
     st.markdown("### 💬 Enviar Notificación del Último Reporte por WhatsApp")
+    
     ultimo = st.session_state.registros[-1]
     
-    mensaje_wht = (
-        "REPORTE CLUB PARK\n"
-        f"Fecha: {ultimo['Fecha']}\n"
-        f"Sucursal: {ultimo['Sitio / Unidad']}\n"
-        f"Supervisor: {ultimo['Supervisor']}\n"
-        f"Ingreso Bruto: ${ultimo['Ingreso Bruto (MXN)']:,.2f} MXN\n"
-        f"Gastos Totales: ${ultimo['Total Gastos y Nóminas (MXN)']:,.2f} MXN\n"
-        f"Ingreso Neto: ${ultimo['Ingreso Neto / Utilidad (MXN)']:,.2f} MXN\n"
-        f"Elaboró: {ultimo['Elaboró']} | Recibe: {ultimo['Recibe']}"
-    )
+    # Campo opcional para introducir el número telefónico de destino (ej. +52155XXXXXXXX)
+    telefono_destino = st.text_input("📱 Número de WhatsApp del Destinatario (Opcional - con lada, ej: 5215512345678):", value="")
     
-    encoded_msg = urllib.parse.quote(mensaje_wht)
-    WhatsA
+    mensaje_wht = (
+        f"🚗 *REPORTE CLUB PARK*\n"
+        f"📅 Fecha: {ultimo['Fecha']}\n"
+        f"🏢 Sucursal: {ultimo['Sitio / Unidad']}\n"
+        f"👤 Supervisor: {ultimo['Supervisor']}\n"
+        f"💵 Ingreso Bruto: ${ultimo['Ingreso Bruto (MXN)']:,.2f} MXN\n"
+        f"🛠️ Gastos Totales: ${ultimo['Total Gast
