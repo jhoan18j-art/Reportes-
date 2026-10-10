@@ -3,6 +3,7 @@ import streamlit as st
 from datetime import datetime, date
 from PIL import Image
 import os
+import io
 import json
 
 # Soporte opcional para análisis automático de imagen con Gemini Vision
@@ -155,7 +156,8 @@ if st.session_state.rol == "Contador Auditor":
     st.info("Estimado Víctor, desde este panel tienes acceso al control de reportes por usuario, balance semanal por unidad y descarga de la hoja de Excel consolidada.")
     
     if st.session_state.registros:
-        df_auditoria = pd.DataFrame(st.session_state.registros)
+        # Crear DataFrame excluyendo los bytes de la foto para la tabla
+        df_auditoria = pd.DataFrame([{k: v for k, v in reg.items() if k != "foto_bytes"} for reg in st.session_state.registros])
         
         # --- 1. CONTROL DE REPORTES SUBIDOS POR CADA USUARIO ---
         st.markdown("### 👥 Control de Hojas de Reporte Subidas por Usuario")
@@ -197,6 +199,13 @@ if st.session_state.rol == "Contador Auditor":
         st.markdown("### 📊 Tabla Global de Todos los Reportes de la Semana")
         st.dataframe(df_auditoria, use_container_width=True)
         
+        # Opcional: Mostrar fotos guardadas de los reportes
+        st.markdown("### 📸 Evidencias Fotográficas Guardadas en los Reportes")
+        for idx, reg in enumerate(st.session_state.registros):
+            if reg.get("foto_bytes"):
+                with st.expander(f"Reporte #{idx+1} - {reg['Fecha']} - {reg['Sitio / Unidad']} (Supervisor: {reg['Supervisor']})"):
+                    st.image(Image.open(io.BytesIO(reg["foto_bytes"])), caption=f"Evidencia de {reg['Sitio / Unidad']}", width=350)
+
         total_ingresos_brutos = df_auditoria["Ingreso Bruto (MXN)"].sum() if "Ingreso Bruto (MXN)" in df_auditoria.columns else 0.0
         total_gastos_gral = df_auditoria["Total Gastos y Nóminas (MXN)"].sum() if "Total Gastos y Nóminas (MXN)" in df_auditoria.columns else 0.0
         total_ingresos_netos = df_auditoria["Ingreso Neto / Utilidad (MXN)"].sum() if "Ingreso Neto / Utilidad (MXN)" in df_auditoria.columns else 0.0
@@ -366,6 +375,9 @@ with st.form("form_reporte_guardar"):
         elif foto_reporte is None:
             st.warning("⚠️ Advertencia: Es necesario adjuntar la fotografía de la hoja de reporte físico.")
         else:
+            # Convertir foto a bytes para que quede guardada permanentemente en el registro
+            foto_bytes = foto_reporte.getvalue() if foto_reporte else None
+            
             nuevo_registro = {
                 "Fecha": fecha_formateada,
                 "Supervisor": st.session_state.usuario_autenticado,
@@ -388,7 +400,8 @@ with st.form("form_reporte_guardar"):
                 "Cantidad a Entregar (MXN)": ingreso_neto_live,
                 "Elaboró": elaboro,
                 "Recibe": recibe,
-                "Evidencia Foto": "Sí"
+                "Evidencia Foto": "Sí",
+                "foto_bytes": foto_bytes
             }
             st.session_state.registros.append(nuevo_registro)
             st.success(f"¡El reporte del sitio '{sitio}' ha sido validado y guardado exitosamente por {st.session_state.usuario_autenticado}!")
@@ -396,8 +409,5 @@ with st.form("form_reporte_guardar"):
 if st.session_state.registros:
     st.markdown("---")
     st.markdown("### 📈 Mis Registros Enviados en la Semana")
-    df_reportes = pd.DataFrame(st.session_state.registros)
-    cols_super = [c for c in ["Fecha", "Sitio / Unidad", "Boletos Pagados (A Entregar)", "Ingreso Bruto (MXN)", "Total Gastos y Nóminas (MXN)", "Ingreso Neto / Utilidad (MXN)", "Rentabilidad (%)", "Elaboró", "Recibe"] if c in df_reportes.columns]
-    st.dataframe(df_reportes[cols_super], use_container_width=True)
-    st.info("ℹ️ Nota: La descarga del archivo consolidado de Excel con el análisis financiero completo está reservada exclusivamente para el contador Víctor.")
-    
+    # Mostrar tabla sin la columna de bytes para mantener el reporte limpio
+    df_reportes = pd.DataFrame([{k: v for k, v in reg.items() if k != "foto_bytes"} for reg 
