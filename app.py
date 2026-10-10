@@ -412,4 +412,10 @@ if foto_reporte is not None:
                     st.session_state.g_esp = float(datos_ia.get("gastos_especiales", 0.0))
                     st.session_state.g_gen = float(datos_ia.get("gastos_generales", 0.0))
                     st.session_state.elaboro_val = str(datos_ia.get("elaboro", ""))
+                    # Soporte opcional para análisis de imágenes con Gemini
+try:
+    import google.generativeai as genai
+    GENAI_AVAILABLE = True
+except ImportError:
+    GENAI_AVAILABLE = False
                     
