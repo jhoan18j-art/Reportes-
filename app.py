@@ -424,7 +424,15 @@ if st.session_state.registros:
     st.markdown("### 💬 Enviar Notificación del Último Reporte por WhatsApp")
     ultimo = st.session_state.registros[-1]
     
-    mensaje_wht = f"REPORTE CLUB PARK\nFecha: {ultimo['Fecha']}\nSucursal: {ultimo['Sitio / Unidad']}\nSupervisor: {ultimo['Supervisor']}\nIngreso Bruto: ${ultimo['Ingreso Bruto (MXN)']:,.2f} MXN\nGastos Totales: ${ultimo['Total Gastos y Nóminas (MXN)']:,.2f} MXN\nIngreso Neto: ${ultimo['Ingreso Neto / Utilidad (MXN)']:,.2f} MXN\nElaboró: {ultimo['Elaboró']} | Recibe: {ultimo['Recibe']}"
+    mensaje_wht = (
+        "REPORTE CLUB PARK\n"
+        f"Fecha: {ultimo['Fecha']}\n"
+        f"Sucursal: {ultimo['Sitio / Unidad']}\n"
+        f"Supervisor: {ultimo['Supervisor']}\n"
+        f"Ingreso Bruto: ${ultimo['Ingreso Bruto (MXN)']:,.2f} MXN\n"
+        f"Gastos Totales: ${ultimo['Total Gastos y Nóminas (MXN)']:,.2f} MXN\n"
+        f"Ingreso Neto: ${ultimo['Ingreso Neto / Utilidad (MXN)']:,.2f} MXN\n"
+        f"Elaboró: {ultimo['Elaboró']} | Recibe: {ultimo['Recibe']}"
+    )
     
-    encoded_msg = urllib.parse.quote(mensaje_wht)
-    whatsapp_url = f"https://wa.me/?text={encoded_msg}
+    e
