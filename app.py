@@ -5,6 +5,10 @@ from PIL import Image
 import os
 import io
 import json
+import base64
+
+# Archivo permanente de base de datos local
+DB_FILE = "reportes_clubpark.json"
 
 # Soporte opcional para análisis automático de imagen con Gemini Vision
 try:
@@ -30,9 +34,38 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Inicializar base de datos de registros en sesión si no existe
+# --- FUNCIONES DE ALMACENAMIENTO PERMANENTE ---
+def cargar_registros_guardados():
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                # Convertir cadenas base64 de fotos a bytes
+                for reg in data:
+                    if reg.get("foto_b64"):
+                        reg["foto_bytes"] = base64.b64decode(reg["foto_b64"])
+                return data
+        except Exception:
+            return []
+    return []
+
+def guardar_registros_permanentes(registros):
+    data_to_save = []
+    for reg in registros:
+        reg_copy = dict(reg)
+        if "foto_bytes" in reg_copy and reg_copy["foto_bytes"]:
+            reg_copy["foto_b64"] = base64.b64encode(reg_copy["foto_bytes"]).decode("utf-8")
+            del reg_copy["foto_bytes"]
+        elif "foto_bytes" in reg_copy:
+            del reg_copy["foto_bytes"]
+        data_to_save.append(reg_copy)
+        
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(data_to_save, f, ensure_ascii=False, indent=4)
+
+# Cargar registros en la sesión desde el archivo permanente al iniciar la app
 if "registros" not in st.session_state:
-    st.session_state.registros = []
+    st.session_state.registros = cargar_registros_guardados()
 
 # Diccionario oficial con los costos predeterminados en Pesos Mexicanos ($ M.N.) por sucursal
 PRECIOS_SUCURSALES = {
@@ -145,7 +178,7 @@ if st.sidebar.button("🚪 Cerrar Sesión"):
     st.rerun()
 
 st.sidebar.markdown("---")
-st.sidebar.info(f"**Usuario actual:** {st.session_state.usuario_autenticado}\n\n**Rol:** {st.session_state.rol}\n\n**Moneda:** Pesos Mexicanos (MXN)")
+st.sidebar.info(f"**Usuario actual:** {st.session_state.usuario_autenticado}\n\n**Rol:** {st.session_state.rol}\n\n**Total Acumulado:** {len(st.session_state.registros)} reportes guardados\n\n**Moneda:** Pesos Mexicanos (MXN)")
 
 # ==========================================
 # VISTA EXCLUSIVA PARA EL CONTADOR AUDITOR (VÍCTOR)
@@ -153,17 +186,17 @@ st.sidebar.info(f"**Usuario actual:** {st.session_state.usuario_autenticado}\n\n
 if st.session_state.rol == "Contador Auditor":
     st.markdown("---")
     st.markdown("## 🔍 Panel de Auditoría, Balance Financiero y Control de Reportes (Contador)")
-    st.info("Estimado Víctor, desde este panel tienes acceso al control de reportes por usuario, balance semanal por unidad y descarga de la hoja de Excel consolidada.")
+    st.info("Estimado Víctor, desde este panel tienes acceso al control masivo de reportes guardados permanentemente, balance semanal por unidad y descarga de la hoja de Excel consolidada.")
     
     if st.session_state.registros:
         registros_limpios = []
         for reg in st.session_state.registros:
-            reg_sin_bytes = {k: v for k, v in reg.items() if k != "foto_bytes"}
+            reg_sin_bytes = {k: v for k, v in reg.items() if k not in ["foto_bytes", "foto_b64"]}
             registros_limpios.append(reg_sin_bytes)
         df_auditoria = pd.DataFrame(registros_limpios)
         
         # --- 1. CONTROL DE REPORTES SUBIDOS POR CADA USUARIO ---
-        st.markdown("### 👥 Control de Hojas de Reporte Subidas por Usuario")
+        st.markdown(f"### 👥 Control de Hojas de Reporte Subidas (Total Almacenado: {len(st.session_state.registros)})")
         v_manuel_count = df_auditoria[df_auditoria["Supervisor"] == "Víctor Manuel"].shape[0]
         j_jesus_count = df_auditoria[df_auditoria["Supervisor"] == "José de Jesús"].shape[0]
         v_contador_count = df_auditoria[df_auditoria["Supervisor"].str.contains("Contador", case=False, na=False)].shape[0]
@@ -199,14 +232,14 @@ if st.session_state.rol == "Contador Auditor":
             b4.error(f"🛠️ **Mayor Gasto:**\n\n{mayor_gasto['Sitio / Unidad']} (${mayor_gasto['Total Gastos y Nóminas (MXN)']:,.2f})")
 
         st.markdown("---")
-        st.markdown("### 📊 Tabla Global de Todos los Reportes de la Semana")
+        st.markdown("### 📊 Tabla Global de Todos los Reportes Acumulados")
         st.dataframe(df_auditoria, use_container_width=True)
         
-        st.markdown("### 📸 Evidencias Fotográficas Guardadas en los Reportes")
-        for idx, reg in enumerate(st.session_state.registros):
-            if reg.get("foto_bytes"):
-                with st.expander(f"Reporte #{idx+1} - {reg['Fecha']} - {reg['Sitio / Unidad']} (Supervisor: {reg['Supervisor']})"):
-                    st.image(Image.open(io.BytesIO(reg["foto_bytes"])), caption=f"Evidencia de {reg['Sitio / Unidad']}", width=350)
+        st.markdown("### 📸 Visor de Evidencias Fotográficas")
+        with st.expander("📂 Desplegar galería de fotos de reportes acumulados"):
+            for idx, reg in enumerate(st.session_state.registros):
+                if reg.get("foto_bytes"):
+                    st.image(Image.open(io.BytesIO(reg["foto_bytes"])), caption=f"Reporte #{idx+1} - {reg['Fecha']} - {reg['Sitio / Unidad']} (Sup: {reg['Supervisor']})", width=300)
 
         total_ingresos_brutos = df_auditoria["Ingreso Bruto (MXN)"].sum() if "Ingreso Bruto (MXN)" in df_auditoria.columns else 0.0
         total_gastos_gral = df_auditoria["Total Gastos y Nóminas (MXN)"].sum() if "Total Gastos y Nóminas (MXN)" in df_auditoria.columns else 0.0
@@ -233,7 +266,8 @@ if st.session_state.rol == "Contador Auditor":
         
         if st.button("🗑️ Limpiar / Borrar Todos los Registros"):
             st.session_state.registros = []
-            st.success("Se han borrado todos los registros del sistema.")
+            guardar_registros_permanentes([])
+            st.success("Se han borrado todos los registros guardados en la base de datos.")
             st.rerun()
     else:
         st.warning("⚠️ No hay registros cargados en el sistema todavía por parte de los supervisores.")
@@ -377,43 +411,14 @@ with st.form("form_reporte_guardar"):
         elif foto_reporte is None:
             st.warning("⚠️ Advertencia: Es necesario adjuntar la fotografía de la hoja de reporte físico.")
         else:
-            foto_bytes = foto_reporte.getvalue() if foto_reporte else None
+            # Comprimir la imagen para optimizar el almacenamiento local y la exportación masiva
+            foto_bytes = None
+            if foto_reporte is not None:
+                img_to_compress = Image.open(foto_reporte)
+                img_to_compress.thumbnail((800, 800))
+                img_io = io.BytesIO()
+                img_to_compress.save(img_io, format="JPEG", quality=75)
+                foto_bytes = img_io.getvalue()
             
             nuevo_registro = {
-                "Fecha": fecha_formateada,
-                "Supervisor": st.session_state.usuario_autenticado,
-                "Sitio / Unidad": sitio,
-                "Costo Boleto (MXN)": costo_boleto,
-                "Folio Inicial": folio_inicial,
-                "Folio Final": folio_final,
-                "Folio sin desprender": folio_sin_desprender,
-                "Total Boletos Entregados": total_boletos_entregados,
-                "Boletos Pagados (A Entregar)": boletos_pagados,
-                "Cancelados": cancelados,
-                "Pérdidos": perdidos,
-                "Gastos de Operación": "Título Informativo",
-                "Gastos Especiales (MXN)": gastos_especiales,
-                "Gastos Generales (MXN)": gastos_generales,
-                "Total Gastos y Nóminas (MXN)": total_gastos_live,
-                "Ingreso Bruto (MXN)": ingreso_bruto_live,
-                "Ingreso Neto / Utilidad (MXN)": ingreso_neto_live,
-                "Rentabilidad (%)": round(rentabilidad_live, 2),
-                "Cantidad a Entregar (MXN)": ingreso_neto_live,
-                "Elaboró": elaboro,
-                "Recibe": recibe,
-                "Evidencia Foto": "Sí",
-                "foto_bytes": foto_bytes
-            }
-            st.session_state.registros.append(nuevo_registro)
-            st.success(f"¡El reporte del sitio '{sitio}' ha sido validado y guardado exitosamente por {st.session_state.usuario_autenticado}!")
-
-if st.session_state.registros:
-    st.markdown("---")
-    st.markdown("### 📈 Mis Registros Enviados en la Semana")
-    registros_limpios = []
-    for reg in st.session_state.registros:
-        reg_sin_bytes = {k: v for k, v in reg.items() if k != "foto_bytes"}
-        registros_limpios.append(reg_sin_bytes)
-    df_reportes = pd.DataFrame(registros_limpios)
-    
-    col
+                "Fecha"
