@@ -100,23 +100,17 @@ UNIDADES_VICTOR = ["SUMO STA", "CHEGARAY", "RYOSHI", "ENCANTO", "S. AZURA", "CHU
 
 SUCURSALES_LISTA = ["-- Selecciona o busca la sucursal --"] + list(PRECIOS_SUCURSALES.keys())
 
-if "costo_boleto_val" not in st.session_state:
-    st.session_state.costo_boleto_val = 40
-
-defaults = {
-    "f_ini": 0,
-    "f_fin": 0,
-    "f_sin": 0,
-    "f_can": 0,
-    "f_per": 0,
-    "g_esp": 0.0,
-    "g_gen": 0.0,
-    "elaboro_val": "",
-    "recibe_val": ""
-}
-for key, val in defaults.items():
-    if key not in st.session_state:
-        st.session_state[key] = val
+# Valores por defecto para entradas
+if "f_ini_val" not in st.session_state: st.session_state.f_ini_val = 0
+if "f_fin_val" not in st.session_state: st.session_state.f_fin_val = 0
+if "f_sin_val" not in st.session_state: st.session_state.f_sin_val = 0
+if "f_can_val" not in st.session_state: st.session_state.f_can_val = 0
+if "f_per_val" not in st.session_state: st.session_state.f_per_val = 0
+if "g_esp_val" not in st.session_state: st.session_state.g_esp_val = 0.0
+if "g_gen_val" not in st.session_state: st.session_state.g_gen_val = 0.0
+if "elaboro_val" not in st.session_state: st.session_state.elaboro_val = ""
+if "recibe_val" not in st.session_state: st.session_state.recibe_val = ""
+if "costo_boleto_val" not in st.session_state: st.session_state.costo_boleto_val = 40
 
 def actualizar_costo_sucursal():
     sucursal_seleccionada = st.session_state.get("select_sitio")
@@ -232,7 +226,7 @@ if st.session_state.rol == "Contador Auditor":
 
     st.markdown("---")
 
-    with st.expander("🎪 Registrar Reporte de Eventos / Fines de Semana (Facultad del Contador)"):
+    with st.expander("🎪 Registrar Reporte de Eventos / Fines de Semana (Facultad del Contador)", expanded=True):
         st.warning("Como Contador Auditor, puedes dar de alta reportes adicionales de eventos en cualquier fecha.")
         with st.form("form_evento_contador"):
             ev_fecha = st.date_input("Fecha del Evento", value=date.today())
@@ -249,9 +243,9 @@ if st.session_state.rol == "Contador Auditor":
                 if ev_sucursal == "-- Selecciona o busca la sucursal --":
                     st.error("Selecciona una sucursal válida.")
                 else:
-                    boletos_evt = max(0, (ev_fin - ev_ini) + 1)
-                    bruto_evt = boletos_evt * ev_costo
-                    neto_evt = bruto_evt - ev_gastos
+                    boletos_evt = max(0, (int(ev_fin) - int(ev_ini)) + 1)
+                    bruto_evt = boletos_evt * float(ev_costo)
+                    neto_evt = bruto_evt - float(ev_gastos)
                     
                     reg_evento = {
                         "Fecha": ev_fecha.strftime("%d/%m/%Y"),
@@ -418,17 +412,5 @@ if foto_reporte is not None:
                         import google.generativeai as genai_legacy
 
                         genai_legacy.configure(api_key=api_key_env)
-                        model_legacy = genai_legacy.GenerativeModel(
-                            "gemini-1.5-flash"
-                        )
-                        response = model_legacy.generate_content(
-                            [prompt_text, imagen]
-                        )
-                        texto_res = (response.text or "").strip()
-
-                    except Exception as error_ia:
-                        st.error(
-                            f"Error procesando la imagen con IA: {error_ia}"
-                        )
-
-    
+                        model_legacy = genai_legacy.GenerativeModel("gemini-1.5-flash")
+               
