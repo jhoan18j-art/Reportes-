@@ -185,9 +185,9 @@ with st.form("form_reporte_completo"):
         cancelados = st.number_input("❌ Boletos Cancelados", value=0, step=1)
         perdidos = st.number_input("⚠️ Boletos Pérdidos", value=0, step=1)
         
-        # --- CÁLCULO AUTOMÁTICO DE BOLETOS EXPEDIDOS (ENTREGADOS) ---
+        # Conteo automático de boletos entregados / expedidos
         total_boletos_entregados = (folio_final - folio_inicial + 1) if folio_final >= folio_inicial else 0
-        st.info(f"📦 Boletos Entregados (Expedidos): **{total_boletos_entregados}**")
+        st.info(f"📦 Boletos Entregados: **{total_boletos_entregados}**")
 
         gastos_operacion = st.number_input("🛠️ Gastos de Operación ($ MXN)", value=0.0, step=10.0)
 
@@ -205,13 +205,13 @@ with st.form("form_reporte_completo"):
     with c5:
         recibe = st.text_input("👤 Quien Recibe Reporte (Nombre)*", placeholder="Ej. Jesús")
 
-    # --- CÁLCULOS FINANCIEROS Y MULTIPLICACIÓN POR COSTO DE BOLETO (MXN) ---
+    # --- CÁLCULO ESTRICTO DE BOLETOS A ENTREGAR (PAGADOS) Y MULTIPLICACIÓN ---
     boletos_pagados = max(0, total_boletos_entregados - cancelados - perdidos)
     
     total_sueldos_nominas = lider_sueldo + operador1_sueldo + operador2_sueldo
     total_gastos = gastos_operacion + gastos_especiales + gastos_generales + total_sueldos_nominas
     
-    # Multiplicación exacta de boletos expedidos/vendidos por el costo del boleto
+    # El resultado de la suma/resta de boletos multiplicado por el costo del boleto da el Ingreso Bruto
     ingreso_bruto = boletos_pagados * costo_boleto
     ingreso_neto = ingreso_bruto - total_gastos
     cantidad_entregar = ingreso_neto
@@ -220,8 +220,8 @@ with st.form("form_reporte_completo"):
 
     st.markdown("### 📊 Resumen Financiero y Conteo de Boletos (MXN)")
     r1, r2, r3, r4 = st.columns(4)
-    r1.metric("Boletos Entregados", total_boletos_entregados)
-    r2.metric("Boletos Pagados (Vendidos)", boletos_pagados)
+    r1.metric("Boletos a Entregar (Pagados)", boletos_pagados)
+    r2.metric("Total Entregados (Rango)", total_boletos_entregados)
     r3.metric("Ingreso Bruto", f"${ingreso_bruto:,.2f} MXN")
     r4.metric("Ingreso Neto (Utilidad)", f"${ingreso_neto:,.2f} MXN", delta=f"${ingreso_neto:,.2f} MXN")
 
@@ -246,7 +246,7 @@ with st.form("form_reporte_completo"):
                 "Folio Final": folio_final,
                 "Folio sin desprender": folio_sin_desprender,
                 "Total Boletos Entregados": total_boletos_entregados,
-                "Boletos Pagados": boletos_pagados,
+                "Boletos Pagados (A Entregar)": boletos_pagados,
                 "Cancelados": cancelados,
                 "Pérdidos": perdidos,
                 "Gastos Operación (MXN)": gastos_operacion,
@@ -271,7 +271,7 @@ if st.session_state.registros:
     st.markdown("---")
     st.markdown("### 📈 Mis Registros Enviados en la Semana")
     df_reportes = pd.DataFrame(st.session_state.registros)
-    cols_super = [c for c in ["Fecha", "Sitio / Unidad", "Total Boletos Entregados", "Boletos Pagados", "Ingreso Bruto (MXN)", "Total Gastos y Nóminas (MXN)", "Ingreso Neto / Utilidad (MXN)", "Rentabilidad (%)", "Elaboró", "Recibe"] if c in df_reportes.columns]
+    cols_super = [c for c in ["Fecha", "Sitio / Unidad", "Boletos Pagados (A Entregar)", "Ingreso Bruto (MXN)", "Total Gastos y Nóminas (MXN)", "Ingreso Neto / Utilidad (MXN)", "Rentabilidad (%)", "Elaboró", "Recibe"] if c in df_reportes.columns]
     st.dataframe(df_reportes[cols_super], use_container_width=True)
     st.info("ℹ️ Nota: La descarga del archivo consolidado de Excel con el análisis financiero completo está reservada exclusivamente para el contador Víctor.")
     
