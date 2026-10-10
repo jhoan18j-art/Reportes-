@@ -252,6 +252,23 @@ if st.session_state.rol == "Contador Auditor":
                     boletos_evt = max(0, (ev_fin - ev_ini) + 1)
                     bruto_evt = boletos_evt * ev_costo
                     neto_evt = bruto_evt - ev_gastos
+                                    prompt_text = (
+                    "Analiza la fotografía del comprobante o reporte de valet parking. "
+                    "Extrae los datos visibles y devuelve únicamente un objeto JSON válido con estos campos: "
+                    '{"folio_inicial": 0, '
+                    '"folio_final": 0, '
+                    '"folio_sin_desprender": 0, '
+                    '"cancelados": 0, '
+                    '"perdidos": 0, '
+                    '"gastos_especiales": 0.0, '
+                    '"gastos_generales": 0.0, '
+                    '"elaboro": "", '
+                    '"recibe": ""}. '
+                    "Si la imagen es un boleto individual (como un ticket con un número de folio), "
+                    "coloca ese número de folio tanto en folio_inicial como en folio_final. "
+                    "No inventes datos de gastos si no están impresos."
+                                    )
+                    
                     
                     reg_evento = {
                         "Fecha": ev_fecha.strftime("%d/%m/%Y"),
