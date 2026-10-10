@@ -408,7 +408,6 @@ Devuelve únicamente un objeto JSON válido con estos campos:
 }
 Usa números para folios y cantidades.
 No inventes datos que no sean legibles.
-"""
                 
 
 {
@@ -426,7 +425,6 @@ No inventes datos que no sean legibles.
 Devuelve números enteros para folios y boletos,
 y números decimales para gastos.
 No inventes datos que no sean legibles.
-"""
                 
                 )
 
