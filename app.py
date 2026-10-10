@@ -417,5 +417,4 @@ if foto_reporte is not None:
                         model_legacy = genai_legacy.GenerativeModel("gemini-1.5-flash")
                         response = model_legacy.generate_content([prompt_text, imagen])
                         texto_res = response.text.strip().replace("```json", "").replace("```", "")
-                    except Exception as e:
-                        st.error(f"E
+                    
