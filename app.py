@@ -392,20 +392,22 @@ if foto_reporte is not None:
 
                 
 
-                prompt_text = """
-Analiza la fotografía del reporte de valet parking.
-Devuelve únicamente un objeto JSON válido con estos campos:
-{
-  "folio_inicial": 0,
-  "folio_final": 0,
-  "folio_sin_desprender": 0,
-  "cancelados": 0,
-  "perdidos": 0,
-  "gastos_especiales": 0.0,
-  "gastos_generales": 0.0,
-  "elaboro": "",
-  "recibe": ""
-}
+                
+                prompt_text = (
+                    "Analiza la fotografía del reporte de valet parking. "
+                    "Devuelve únicamente un objeto JSON válido con estos campos: "
+                    '{"folio_inicial": 0, '
+                    '"folio_final": 0, '
+                    '"folio_sin_desprender": 0, '
+                    '"cancelados": 0, '
+                    '"perdidos": 0, '
+                    '"gastos_especiales": 0.0, '
+                    '"gastos_generales": 0.0, '
+                    '"elaboro": "", '
+                    '"recibe": ""}. '
+                    "No inventes datos que no sean legibles."
+                )
+                
 Usa números para folios y cantidades.
 No inventes datos que no sean legibles.
                 
