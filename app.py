@@ -6,6 +6,21 @@ import os
 
 st.set_page_config(page_title="Club Park - Control Operativo MXN", page_icon="🚗", layout="wide")
 
+# Estilo CSS para ocultar los botones de más (+) y menos (-) en los inputs numéricos
+st.markdown("""
+    <style>
+        /* Ocultar botones de incremento y decremento en st.number_input */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 # Inicializar base de datos de registros en sesión si no existe
 if "registros" not in st.session_state:
     st.session_state.registros = []
@@ -280,4 +295,4 @@ if st.session_state.registros:
     cols_super = [c for c in ["Fecha", "Sitio / Unidad", "Boletos Pagados (A Entregar)", "Ingreso Bruto (MXN)", "Total Gastos y Nóminas (MXN)", "Ingreso Neto / Utilidad (MXN)", "Rentabilidad (%)", "Elaboró", "Recibe"] if c in df_reportes.columns]
     st.dataframe(df_reportes[cols_super], use_container_width=True)
     st.info("ℹ️ Nota: La descarga del archivo consolidado de Excel con el análisis financiero completo está reservada exclusivamente para el contador Víctor.")
-                
+    
