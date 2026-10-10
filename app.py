@@ -304,17 +304,6 @@ if foto_reporte is not None:
                         st.session_state.f_fin_val = int(datos_ia.get("folio_final", 0) or 0)
                         st.session_state.f_sin_val = int(datos_ia.get("folio_sin_desprender", 0) or 0)
                         st.session_state.f_can_val = int(datos_ia.get("cancelados", 0) or 0)
-                        st.session_state.f_per_val = int(datos_ia.get("perdidos", 0) or 0)
-                        st.session_state.g_esp_val = float(datos_ia.get("gastos_especiales", 0.0) or 0.0)
-                        st.session_state.g_gen_val = float(datos_ia.get("gastos_generales", 0.0) or 0.0)
-                        st.session_state.elaboro_val = str(datos_ia.get("elaboro", "") or "")
-                        st.session_state.recibe_val = str(datos_ia.get("recibe", "") or "")
-
-                        st.success("✨ ¡Datos leídos de la imagen e insertados en los campos!")
-                        st.rerun()
-                    except Exception as parse_err:
-                        st.warning(f"⚠️ No se pudo procesar la respuesta de la IA: {parse_err}")
-
 st.markdown("---")
 st.markdown("### 📝 2. Captura / Verificación de Datos del Reporte")
 
@@ -327,13 +316,7 @@ with st.form("form_reporte_supervisor"):
             "Sitio / Unidad",
             SUCURSALES_LISTA,
             key="select_sitio",
-            
-sucursal_sel = st.selectbox(
-    "Sitio / Unidad",
-    opciones_sucursales,
-    key="sucursal_sel"
-)
-            
+            on_change=actualizar_costo_sucursal
         )
     with col_f2:
         costo_boleto = st.number_input(
@@ -384,8 +367,6 @@ sucursal_sel = st.selectbox(
 
             foto_bytes = foto_reporte.getvalue() if foto_reporte is not None else None
 
-            
-            
             nuevo_registro = {
                 "Fecha": fecha_rep.strftime("%d/%m/%Y"),
                 "Supervisor": supervisor_nombre,
@@ -406,14 +387,26 @@ sucursal_sel = st.selectbox(
                 "Ingreso Neto / Utilidad (MXN)": ingreso_neto,
                 "Rentabilidad (%)": rentabilidad,
                 "Cantidad a Entregar (MXN)": ingreso_neto,
-                "Elaboró": elaboro,
+                "Elaboró": elaboro_txt,
+                "Recibe": recibe_txt,
+                "Evidencia Foto": "Adjunta" if foto_bytes else "Sin foto",
+                "foto_bytes": foto_bytes
             }
 
-            if "reportes" not in st.session_state:
-                st.session_state["reportes"] = []
+            st.session_state.registros.append(nuevo_registro)
+            guardar_registros_permanentes(st.session_state.registros)
 
-            st.session_state["reportes"].append(nuevo_registro)
+            # Limpiar campos temporales
+            st.session_state.f_ini_val = 0
+            st.session_state.f_fin_val = 0
+            st.session_state.f_sin_val = 0
+            st.session_state.f_can_val = 0
+            st.session_state.f_per_val = 0
+            st.session_state.g_esp_val = 0.0
+            st.session_state.g_gen_val = 0.0
+            st.session_state.elaboro_val = ""
+            st.session_state.recibe_val = ""
 
-            st.success("Reporte registrado correctamente.")
-            st.json(nuevo_registro)
+            st.success(f"✅ ¡Reporte guardado exitosamente para la sucursal {sucursal_sel}!")
+            st.rerun()
             
