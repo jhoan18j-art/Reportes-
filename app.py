@@ -188,12 +188,10 @@ if st.session_state.rol == "Contador Auditor":
         fecha_revision = st.date_input("Selecciona la fecha a revisar:", value=date.today(), key="fecha_rev_contador")
         fecha_rev_str = fecha_revision.strftime("%d/%m/%Y")
         
-        # Filtrar registros guardados en la fecha seleccionada
         unidades_reportadas_fecha = [
             reg["Sitio / Unidad"] for reg in st.session_state.registros if reg.get("Fecha") == fecha_rev_str
         ]
         
-        # Identificar faltantes
         faltantes_jesus = [u for u in UNIDADES_JESUS if u not in unidades_reportadas_fecha]
         faltantes_victor = [u for u in UNIDADES_VICTOR if u not in unidades_reportadas_fecha]
         
@@ -413,4 +411,5 @@ if foto_reporte is not None:
                     st.session_state.f_per = int(datos_ia.get("perdidos", 0))
                     st.session_state.g_esp = float(datos_ia.get("gastos_especiales", 0.0))
                     st.session_state.g_gen = float(datos_ia.get("gastos_generales", 0.0))
-                    st.session_state.elaboro_val = str(datos_ia.get("
+                    st.session_state.elaboro_val = str(datos_ia.get("elaboro", ""))
+                    st.session_state.recibe_val = str(datos_ia.get("recibe", "")
