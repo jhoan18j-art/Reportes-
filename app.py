@@ -401,6 +401,7 @@ if foto_reporte is not None:
                         "Devuelve números enteros para folios/boletos y flotantes para gastos."
                     )
                     
+                    response = None
                     try:
                         client = genai.Client(api_key=api_key_env)
                         response = client.models.generate_content(
@@ -408,14 +409,13 @@ if foto_reporte is not None:
                             contents=[prompt_text, imagen]
                         )
                     except Exception:
-                        genai.configure(api_key=api_key_env)
-                        model = genai.GenerativeModel("gemini-1.5-flash")
-                        response = model.generate_content([prompt_text, imagen])
+                        import google.generativeai as genai_legacy
+                        genai_legacy.configure(api_key=api_key_env)
+                        model_legacy = genai_legacy.GenerativeModel("gemini-1.5-flash")
+                        response = model_legacy.generate_content([prompt_text, imagen])
 
                     texto_res = response.text.strip().replace("```json", "").replace("```", "")
                     datos_ia = json.loads(texto_res)
                     
                     st.session_state.f_ini = int(datos_ia.get("folio_inicial", 0))
-                    st.session_state.f_fin = int(datos_ia.get("folio_final", 0))
-                    st.session_state.f_sin = int(datos_ia.get("folio_sin_desprender", 0))
-                    
+                    st.session_state.f_f
