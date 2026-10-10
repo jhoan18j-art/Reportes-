@@ -385,38 +385,37 @@ if foto_reporte is not None:
         if st.button("🤖 Analizar Foto y Llenar Datos Automáticamente con IA"):
             with st.spinner("Analizando reporte físico y leyendo folios/gastos..."):
                 try:
-                    # Intenta usar la SDK moderna google-genai
+                    prompt_text = (
+                        "Analiza esta imagen de reporte de valet parking y devuelve ÚNICAMENTE un objeto JSON válido con este formato exacto:\n"
+                        "{\n"
+                        '  "folio_inicial": 0,\n'
+                        '  "folio_final": 0,\n'
+                        '  "folio_sin_desprender": 0,\n'
+                        '  "cancelados": 0,\n'
+                        '  "perdidos": 0,\n'
+                        '  "gastos_especiales": 0.0,\n'
+                        '  "gastos_generales": 0.0,\n'
+                        '  "elaboro": "",\n'
+                        '  "recibe": ""\n'
+                        "}\n"
+                        "Devuelve números enteros para folios/boletos y flotantes para gastos."
+                    )
+                    
                     try:
                         client = genai.Client(api_key=api_key_env)
-                        prompt = """
-                        Analiza esta imagen de reporte de valet parking y devuelve ÚNICAMENTE un objeto JSON válido con este formato exacto:
-                        {
-                            "folio_inicial": 0,
-                            "folio_final": 0,
-                            "folio_sin_desprender": 0,
-                            "cancelados": 0,
-                            "perdidos": 0,
-                            "gastos_especiales": 0.0,
-                            "gastos_generales": 0.0,
-                            "elaboro": "",
-                            "recibe": ""
-                        }
-                        Devuelve números enteros para folios/boletos y flotantes para gastos.
-                        """
                         response = client.models.generate_content(
                             model="gemini-2.5-flash",
-                            contents=[prompt, imagen]
+                            contents=[prompt_text, imagen]
                         )
                     except Exception:
-                        # Fallback a la SDK legacy
                         genai.configure(api_key=api_key_env)
                         model = genai.GenerativeModel("gemini-1.5-flash")
-                        prompt = """
-                        Analiza esta imagen de reporte de valet parking y devuelve ÚNICAMENTE un objeto JSON válido con este formato exacto:
-                        {
-                            "folio_inicial": 0,
-                            "folio_final": 0,
-                            "folio_sin_desprender": 0,
-                            "cancelados": 0,
-                            "perdidos": 0,
-  
+                        response = model.generate_content([prompt_text, imagen])
+
+                    texto_res = response.text.strip().replace("```json", "").replace("```", "")
+                    datos_ia = json.loads(texto_res)
+                    
+                    st.session_state.f_ini = int(datos_ia.get("folio_inicial", 0))
+                    st.session_state.f_fin = int(datos_ia.get("folio_final", 0))
+                    st.session_state.f_sin = int(datos_ia.get("folio_sin_desprender", 0))
+    
