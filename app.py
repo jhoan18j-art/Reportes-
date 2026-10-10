@@ -391,9 +391,11 @@ if foto_reporte is not None:
             with st.spinner("Analizando reporte físico y leyendo folios/gastos..."):
 
                 
-                prompt_text = """
-Analiza esta imagen de reporte de valet parking y devuelve
-ÚNICAMENTE un objeto JSON válido con este formato exacto:
+                                prompt_text = """
+Analiza esta imagen de reporte de valet parking.
+Devuelve únicamente un objeto JSON válido.
+No inventes datos que no sean legibles.
+"""
 
 {
   "folio_inicial": 0,
