@@ -461,3 +461,144 @@ else:
     st.info("Todavía no hay reportes registrados para notificar.")
     
     
+    # ==========================================
+    # NOTIFICACIONES WHATSAPP DEL CONTADOR
+    # ==========================================
+    st.markdown("---")
+    st.markdown("## 📲 Notificaciones de reportes pendientes")
+
+    st.write(
+        "Contador: consulta los reportes de cada supervisor "
+        "y prepara un aviso por WhatsApp."
+    )
+
+    hoy = date.today()
+    meta_base = 15 if hoy.weekday() < 5 else 7
+
+    with st.form("form_aviso_supervisor"):
+        supervisor_aviso = st.selectbox(
+            "Supervisor que recibirá el aviso",
+            ["José de Jesús", "Víctor Manuel"]
+        )
+
+        telefono_aviso = st.text_input(
+            "WhatsApp del supervisor con código de país",
+            placeholder="Ej. 525512345678"
+        )
+
+        meta_diaria = st.number_input(
+            "Meta de reportes para hoy",
+            min_value=1,
+            max_value=100,
+            value=meta_base,
+            step=1
+        )
+
+        reportes_extra = st.number_input(
+            "Reportes adicionales por eventos especiales",
+            min_value=0,
+            max_value=100,
+            value=0,
+            step=1
+        )
+
+        consultar_aviso = st.form_submit_button(
+            "🔎 Consultar pendientes"
+        )
+
+    if consultar_aviso:
+        import re
+
+        def convertir_fecha_aviso(valor):
+            if isinstance(valor, datetime):
+                return valor.date()
+
+            if isinstance(valor, date):
+                return valor
+
+            texto = str(valor or "").strip()
+
+            for formato in (
+                "%d/%m/%Y",
+                "%Y-%m-%d",
+                "%d-%m-%Y"
+            ):
+                try:
+                    return datetime.strptime(
+                        texto[:10], formato
+                    ).date()
+                except ValueError:
+                    continue
+
+            return None
+
+        registros_hoy = [
+            r for r in st.session_state.registros
+            if convertir_fecha_aviso(r.get("Fecha")) == hoy
+            and str(r.get("Supervisor", "")).strip().casefold()
+                == supervisor_aviso.casefold()
+        ]
+
+        entregados = len(registros_hoy)
+        meta_total = int(meta_diaria) + int(reportes_extra)
+        faltantes = max(0, meta_total - entregados)
+
+        st.metric(
+            "Reportes registrados hoy",
+            entregados
+        )
+        st.metric(
+            "Meta total de hoy",
+            meta_total
+        )
+        st.metric(
+            "Reportes pendientes",
+            faltantes
+        )
+
+        if faltantes > 0:
+            mensaje_aviso = (
+                f"Hola {supervisor_aviso}. "
+                f"Control Operativo Club Park: hoy "
+                f"{hoy.strftime('%d/%m/%Y')} tienes una meta "
+                f"de {meta_total} reportes, incluidos los "
+                f"adicionales por eventos. "
+                f"Se han registrado {entregados}; "
+                f"faltan {faltantes}. "
+                "Por favor, envía los reportes pendientes. "
+                "Gracias."
+            )
+        else:
+            mensaje_aviso = (
+                f"Hola {supervisor_aviso}. "
+                f"Club Park registra el cumplimiento de la "
+                f"meta de {meta_total} reportes para hoy "
+                f"{hoy.strftime('%d/%m/%Y')}. Gracias."
+            )
+
+        st.text_area(
+            "Mensaje que se enviará",
+            value=mensaje_aviso,
+            key="mensaje_aviso_preparado"
+        )
+
+        numero_limpio = re.sub(r"\D", "", telefono_aviso)
+
+        if numero_limpio:
+            enlace_whatsapp = (
+                "https://wa.me/"
+                + numero_limpio
+                + "?text="
+                + urllib.parse.quote(mensaje_aviso)
+            )
+
+            st.link_button(
+                "💬 Abrir WhatsApp para enviar aviso",
+                enlace_whatsapp
+            )
+        else:
+            st.warning(
+                "Introduce el número de WhatsApp del supervisor "
+                "con código de país para generar el enlace."
+            )
+            
