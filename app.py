@@ -10,33 +10,34 @@ st.set_page_config(page_title="Club Park - Control Operativo", page_icon="🚗",
 if "registros" not in st.session_state:
     st.session_state.registros = []
 
-# Catálogo oficial de sucursales / sitios
-SUCURSALES_CLUB_PARK = [
-    "-- Selecciona o busca la sucursal --",
-    "PAMPAS",
-    "RAMMA",
-    "SUSHITTO",
-    "BARRANCA",
-    "CARAJILLO",
-    "BENINGANS",
-    "ROMAS",
-    "J.TLALPAN",
-    "J.DIVISION",
-    "J.PICACHO",
-    "J.EMPRESA",
-    "sipily",
-    "M SATÉLITE",
-    "M MARINA",
-    "VETERINARIA",
-    "CLÍNICA",
-    "SUMO STA",
-    "CHEGARAY",
-    "RYOSHI",
-    "ENCANTO",
-    "S. AZURA",
-    "E-BNI",
-    "CHURRASCA"
-]
+# Diccionario oficial con los costos predeterminados por sucursal
+PRECIOS_SUCURSALES = {
+    "PAMPAS": 50,
+    "RAMMA": 70,
+    "SUSHITTO": 40,
+    "BARRANCA": 0,      # Tiempo libre / Variable
+    "CARAJILLO": 100,
+    "BENINGANS": 40,
+    "ROMAS": 65,
+    "J.TLALPAN": 100,
+    "J.DIVISION": 100,
+    "J.PICACHO": 100,
+    "J.EMPRESA": 100,
+    "sipily": 80,
+    "M SATÉLITE": 70,
+    "M MARINA": 70,
+    "VETERINARIA": 0,   # No cobra
+    "CLÍNICA": 100,
+    "SUMO STA": 50,
+    "CHEGARAY": 50,
+    "RYOSHI": 80,
+    "ENCANTO": 90,
+    "S. AZURA": 0,
+    "E-BNI": 0,
+    "CHURRASCA": 70
+}
+
+SUCURSALES_LISTA = ["-- Selecciona o busca la sucursal --"] + list(PRECIOS_SUCURSALES.keys())
 
 # Sistema simple de Autenticación de Usuarios
 if "usuario_autenticado" not in st.session_state:
@@ -105,11 +106,10 @@ if st.session_state.rol == "Contador Auditor":
     st.markdown("## 🔍 Panel de Auditoría y Control Financiero (Contador)")
     st.info("Estimado Víctor, desde este panel tienes acceso exclusivo para auditar, gestionar, subir registros y descargar la hoja de Excel semanal.")
     
-    # Opción para que el contador también pueda subir reportes si lo requiere
     with st.expander("➕ Subir o registrar reporte manualmente (Modo Auditor)"):
         with st.form("form_contador"):
             c_fecha = st.date_input("📅 Fecha", value=date.today())
-            c_sitio = st.selectbox("🏢 Sitio / Sucursal", SUCURSALES_CLUB_PARK[1:])
+            c_sitio = st.selectbox("🏢 Sitio / Sucursal", list(PRECIOS_SUCURSALES.keys()))
             c_ingreso = st.number_input("💵 Ingreso Neto ($)", value=0.0, step=100.0)
             c_gastos = st.number_input("🛠️ Total Gastos y Nóminas ($)", value=0.0, step=50.0)
             c_elaboro = st.text_input("✍️ Elaboró Reporte", value="Contador Víctor")
@@ -160,7 +160,7 @@ if st.session_state.rol == "Contador Auditor":
     else:
         st.warning("⚠️ No hay registros cargados en el sistema todavía por parte de los supervisores.")
         
-    st.stop() # Detiene la ejecución para que los supervisores no vean este panel
+    st.stop()
 
 # ==========================================
 # VISTA PARA SUPERVISORES (Víctor Manuel y José de Jesús)
@@ -175,15 +175,19 @@ if foto_reporte is not None:
 
 st.markdown("---")
 st.markdown("### 📝 2. Captura Obligatoria de Datos del Reporte")
-st.warning("⚠️ Todos los campos son obligatorios. Como supervisor puedes registrar operaciones, pero la descarga del reporte semanal y la gestión de auditoría están reservadas exclusivamente para el contador Víctor.")
+st.warning("⚠️ Todos los campos son obligatorios. Al seleccionar la sucursal, el costo del boleto se cargará automáticamente según la tarifa establecida.")
 
 with st.form("form_reporte_completo"):
     c1, c2, c3 = st.columns(3)
     
     with c1:
         fecha = st.date_input("📅 Fecha", value=date.today())
-        sitio = st.selectbox("🏢 Sitio / Sucursal*", SUCURSALES_CLUB_PARK)
-        costo_boleto = st.number_input("💵 Costo del Boleto ($)", value=40, step=1)
+        sitio = st.selectbox("🏢 Sitio / Sucursal*", SUCURSALES_LISTA)
+        
+        # Determinar costo automático según sucursal seleccionada
+        costo_sugerido = PRECIOS_SUCURSALES.get(sitio, 40) if sitio in PRECIOS_SUCURSALES else 40
+        costo_boleto = st.number_input("💵 Costo del Boleto ($)", value=int(costo_sugerido), step=1)
+        
         folio_inicial = st.number_input("🔢 Folio Inicial Utilizado", value=0, step=1)
         folio_final = st.number_input("🔢 Folio Final Utilizado", value=0, step=1)
         folio_sin_desprender = st.number_input("🔖 Folio inicio sin desprender del block", value=0, step=1)
@@ -264,13 +268,11 @@ with st.form("form_reporte_completo"):
             st.session_state.registros.append(nuevo_registro)
             st.success(f"¡El reporte del sitio '{sitio}' ha sido validado y guardado exitosamente por {st.session_state.usuario_autenticado}!")
 
-# Vista resumida para supervisores (sin botón de descarga de Excel)
 if st.session_state.registros:
     st.markdown("---")
     st.markdown("### 📈 Mis Registros Enviados en la Semana")
     df_reportes = pd.DataFrame(st.session_state.registros)
-    # Mostrar solo columnas esenciales para supervisores
     cols_super = [c for c in ["Fecha", "Sitio / Unidad", "Ingreso Neto", "Total Gastos y Nóminas", "Elaboró", "Recibe"] if c in df_reportes.columns]
     st.dataframe(df_reportes[cols_super], use_container_width=True)
-    st.info("ℹ️ Nota: La descarga del archivo consolidado de Excel y la auditoría general de la semana se encuentran restringidas exclusivamente al usuario Contador (Víctor).")
+    st.info("ℹ️ Nota: La descarga del archivo consolidado de Excel y la auditoría general están reservadas exclusivamente para el contador Víctor.")
     
