@@ -412,9 +412,6 @@ if foto_reporte is not None:
                     st.session_state.g_esp = float(datos_ia.get("gastos_especiales", 0.0))
                     st.session_state.g_gen = float(datos_ia.get("gastos_generales", 0.0))
                     st.session_state.elaboro_val = str(datos_ia.get("elaboro", ""))
+                    st.session_state.elaboro_val = str(datos_ia.get("elaboro", ""))
                     st.session_state.recibe_val = str(datos_ia.get("recibe", ""))
-                                        st.success("✅ Datos extraídos de la fotografía correctamente.")
-                    st.rerun()
 
-                except Exception as e:
-                    st.error(f"❌ Error al analizar la fotografía: {e}")
