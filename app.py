@@ -27,7 +27,6 @@ st.set_page_config(page_title="Club Park - Control Operativo MXN", page_icon="�
 # Estilo CSS para ocultar los botones de más (+) y menos (-) en los inputs numéricos
 st.markdown("""
     <style>
-        /* Ocultar botones de incremento y decremento en st.number_input */
         input[type=number]::-webkit-inner-spin-button, 
         input[type=number]::-webkit-outer-spin-button { 
             -webkit-appearance: none; 
@@ -96,7 +95,6 @@ PRECIOS_SUCURSALES = {
     "CHURRASCA": 70
 }
 
-# Listas de asignación fija de supervisores (Lunes a Viernes)
 UNIDADES_JESUS = ["PAMPAS", "RAMMA", "SUSHITTO", "BARRANCA", "CARAJILLO", "BENINGANS", "CLÍNICA"]
 UNIDADES_VICTOR = ["SUMO STA", "CHEGARAY", "RYOSHI", "ENCANTO", "S. AZURA", "CHURRASCA"]
 
@@ -186,7 +184,6 @@ if st.session_state.rol == "Contador Auditor":
     st.markdown("## 🔍 Panel de Auditoría, Balance Financiero y Control de Eventos (Contador)")
     st.info("Estimado Víctor, desde este panel tienes acceso al control masivo, balance semanal y facultad especial para registrar reportes de eventos y notificar faltantes.")
     
-    # --- SECCIÓN DE NOTIFICACIÓN DE REPORTES FALTANTES POR WHATSAPP ---
     with st.expander("📲 Enviar Recordatorio de Reportes Faltantes por WhatsApp", expanded=True):
         st.markdown("### 🔔 Control de Reportes Faltantes a Supervisores")
         fecha_revision = st.date_input("Selecciona la fecha a revisar:", value=date.today(), key="fecha_rev_contador")
@@ -236,7 +233,7 @@ if st.session_state.rol == "Contador Auditor":
     st.markdown("---")
 
     with st.expander("🎪 Registrar Reporte de Eventos / Fines de Semana (Facultad del Contador)"):
-        st.warning("Como Contador Auditor, puedes dar de alta reportes adicionales de eventos (múltiples por salón/día) en cualquier fecha.")
+        st.warning("Como Contador Auditor, puedes dar de alta reportes adicionales de eventos en cualquier fecha.")
         with st.form("form_evento_contador"):
             ev_fecha = st.date_input("Fecha del Evento", value=date.today())
             ev_sucursal = st.selectbox("Sucursal / Salón de Evento", SUCURSALES_LISTA, key="ev_suc")
@@ -362,7 +359,7 @@ if st.session_state.rol == "Contador Auditor":
 # ==========================================
 st.markdown("---")
 
-dia_semana_actual = date.today().weekday()  # 0 al 4 es de Lunes a Viernes
+dia_semana_actual = date.today().weekday()
 if dia_semana_actual < 5:
     st.info("📋 **Control Operativo (Lunes a Viernes):** Meta establecida para supervisores: **15 reportes diarios** requeridos por operación regular.")
     
@@ -424,4 +421,10 @@ if foto_reporte is not None:
                         response = model_legacy.generate_content([prompt_text, imagen])
                         texto_res = (response.text or "").strip()
                         texto_res = texto_res.replace("```json", "").replace("```", "").strip()
-   
+                    except Exception as err_legacy:
+                        st.error(f"Error procesando la imagen con IA: {err_legacy}")
+
+                if texto_res:
+                    try:
+                        data_ia = json.loads(texto_res)
+                       
