@@ -92,7 +92,7 @@ PRECIOS_SUCURSALES = {
     "CHURRASCA": 70
 }
 
-# Listas de asignación fija de supervisores
+# Listas de asignación fija de supervisores (Lunes a Viernes)
 UNIDADES_JESUS = ["PAMPAS", "RAMMA", "SUSHITTO", "BARRANCA", "CARAJILLO", "BENINGANS", "CLÍNICA"]
 UNIDADES_VICTOR = ["SUMO STA", "CHEGARAY", "RYOSHI", "ENCANTO", "S. AZURA", "CHURRASCA"]
 
@@ -413,5 +413,4 @@ if foto_reporte is not None:
                     st.session_state.f_per = int(datos_ia.get("perdidos", 0))
                     st.session_state.g_esp = float(datos_ia.get("gastos_especiales", 0.0))
                     st.session_state.g_gen = float(datos_ia.get("gastos_generales", 0.0))
-                    st.session_state.elaboro_val = str(datos_ia.get("elaboro", ""))
-   
+                    st.session_state.elaboro_val = str(datos_ia.get("
