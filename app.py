@@ -3,23 +3,47 @@ import streamlit as st
 from datetime import date
 from PIL import Image
 import os
-import google.generativeai as genai
-import json
 
-st.set_page_config(page_title="Club Park - Control Operativo Inteligente", page_icon="🚗", layout="wide")
+st.set_page_config(page_title="Club Park - Control Operativo", page_icon="🚗", layout="wide")
 
-# Inicializar base de datos de registros y datos de IA en sesión
+# Inicializar base de datos de registros en sesión si no existe
 if "registros" not in st.session_state:
     st.session_state.registros = []
 
-if "datos_ia" not in st.session_state:
-    st.session_state.datos_ia = {}
+# Catálogo oficial de sucursales / sitios
+SUCURSALES_CLUB_PARK = [
+    "-- Selecciona o busca la sucursal --",
+    "PAMPAS",
+    "RAMMA",
+    "SUSHITTO",
+    "BARRANCA",
+    "CARAJILLO",
+    "BENINGANS",
+    "ROMAS",
+    "J.TLALPAN",
+    "J.DIVISION",
+    "J.PICACHO",
+    "J.EMPRESA",
+    "sipily",
+    "M SATÉLITE",
+    "M MARINA",
+    "VETERINARIA",
+    "CLÍNICA",
+    "SUMO STA",
+    "CHEGARAY",
+    "RYOSHI",
+    "ENCANTO",
+    "S. AZURA",
+    "E-BNI",
+    "CHURRASCA"
+]
 
-# Sistema de Autenticación de Usuarios
+# Sistema simple de Autenticación de Usuarios
 if "usuario_autenticado" not in st.session_state:
     st.session_state.usuario_autenticado = None
     st.session_state.rol = None
 
+# Pantalla de Login si no ha iniciado sesión
 if st.session_state.usuario_autenticado is None:
     st.markdown("<h1 style='text-align: center;'>🚗 CLUB PARK VALET Y ESTACIONAMIENTOS</h1>", unsafe_allow_html=True)
     st.markdown("<h3 style='text-align: center; color: gray;'>Control de Acceso al Sistema</h3>", unsafe_allow_html=True)
@@ -50,12 +74,7 @@ if st.session_state.usuario_autenticado is None:
                 st.error("❌ Contraseña incorrecta o usuario no seleccionado.")
     st.stop()
 
-# --- PANEL DE CONFIGURACIÓN DE IA EN LA BARRA LATERAL ---
-st.sidebar.title("⚙️ Configuración de IA")
-gemini_api_key = st.sidebar.text_input("API Key de Gemini (Gratis)", type="password", help="Ingresa tu clave de Google AI Studio para activar el auto-llenado por foto.")
-
-if gemini_api_key:
-    genai.configure(api_key=gemini_api_key)
+# --- A PARTIR DE AQUÍ EL USUARIO YA ESTÁ LOGUEADO ---
 
 # Cabecera institucional con el Logotipo integrado
 col_logo, col_titulo = st.columns([1, 4])
@@ -69,131 +88,127 @@ with col_titulo:
     st.title("CLUB PARK VALET Y ESTACIONAMIENTOS S.A. DE C.V.")
     st.subheader(f"Bienvenido, {st.session_state.usuario_autenticado} ({st.session_state.rol})")
 
+# Botón para cerrar sesión
 if st.sidebar.button("🚪 Cerrar Sesión"):
     st.session_state.usuario_autenticado = None
     st.session_state.rol = None
-    st.session_state.datos_ia = {}
     st.rerun()
 
 st.sidebar.markdown("---")
-st.sidebar.info(f"**Usuario:** {st.session_state.usuario_autenticado}\n\n**Rol:** {st.session_state.rol}")
+st.sidebar.info(f"**Usuario actual:** {st.session_state.usuario_autenticado}\n\n**Rol:** {st.session_state.rol}")
 
-# --- VISTA PARA EL CONTADOR AUDITOR ---
+# ==========================================
+# VISTA EXCLUSIVA PARA EL CONTADOR AUDITOR (VÍCTOR)
+# ==========================================
 if st.session_state.rol == "Contador Auditor":
     st.markdown("---")
     st.markdown("## 🔍 Panel de Auditoría y Control Financiero (Contador)")
-    st.info("Estimado Víctor, desde este panel puedes supervisar, auditar y descargar el consolidado completo de todas las operaciones semanales.")
+    st.info("Estimado Víctor, desde este panel tienes acceso exclusivo para auditar, gestionar, subir registros y descargar la hoja de Excel semanal.")
     
+    # Opción para que el contador también pueda subir reportes si lo requiere
+    with st.expander("➕ Subir o registrar reporte manualmente (Modo Auditor)"):
+        with st.form("form_contador"):
+            c_fecha = st.date_input("📅 Fecha", value=date.today())
+            c_sitio = st.selectbox("🏢 Sitio / Sucursal", SUCURSALES_CLUB_PARK[1:])
+            c_ingreso = st.number_input("💵 Ingreso Neto ($)", value=0.0, step=100.0)
+            c_gastos = st.number_input("🛠️ Total Gastos y Nóminas ($)", value=0.0, step=50.0)
+            c_elaboro = st.text_input("✍️ Elaboró Reporte", value="Contador Víctor")
+            
+            btn_add_contador = st.form_submit_button("Guardar Registro de Auditoría")
+            if btn_add_contador:
+                st.session_state.registros.append({
+                    "Fecha": str(c_fecha),
+                    "Supervisor": "Contador Víctor",
+                    "Sitio / Unidad": c_sitio,
+                    "Ingreso Neto": c_ingreso,
+                    "Total Gastos y Nóminas": c_gastos,
+                    "Elaboró": c_elaboro,
+                    "Recibe": "Dirección",
+                    "Evidencia Foto": "N/A (Auditor)"
+                })
+                st.success("¡Registro agregado por el contador con éxito!")
+                st.rerun()
+
     if st.session_state.registros:
+        st.markdown("### 📊 Listado Consolidado de Reportes Operativos")
         df_auditoria = pd.DataFrame(st.session_state.registros)
         st.dataframe(df_auditoria, use_container_width=True)
         
-        total_ingresos_netos = df_auditoria["Ingreso Neto"].sum()
-        total_gastos_gral = df_auditoria["Total Gastos y Nóminas"].sum()
+        total_ingresos_netos = df_auditoria["Ingreso Neto"].sum() if "Ingreso Neto" in df_auditoria.columns else 0.0
+        total_gastos_gral = df_auditoria["Total Gastos y Nóminas"].sum() if "Total Gastos y Nóminas" in df_auditoria.columns else 0.0
         
         col_a1, col_a2 = st.columns(2)
         col_a1.metric("Ingreso Neto Acumulado", f"${total_ingresos_netos:,.2f}")
         col_a2.metric("Total Gastos y Nóminas Acumulado", f"${total_gastos_gral:,.2f}")
         
+        st.markdown("---")
+        st.markdown("### 📥 Descarga Exclusiva de Auditoría (Excel / CSV)")
         csv_export = df_auditoria.to_csv(index=False).encode('utf-8')
+        
+        # ÚNICO USUARIO CON PERMISO DE DESCARGA
         st.download_button(
-            label="📥 Descargar Auditoría Semanal Completa en CSV (Excel)",
+            label="📥 Descargar Reporte Semanal Completo en Excel (CSV)",
             data=csv_export,
-            file_name="Auditoria_Semanal_ClubPark.csv",
+            file_name="Consolidado_Semanal_ClubPark_Auditoria.csv",
             mime="text/csv",
         )
+        
+        if st.button("🗑️ Limpiar / Borrar Todos los Registros"):
+            st.session_state.registros = []
+            st.success("Se han borrado todos los registros del sistema.")
+            st.rerun()
     else:
         st.warning("⚠️ No hay registros cargados en el sistema todavía por parte de los supervisores.")
-    st.stop()
+        
+    st.stop() # Detiene la ejecución para que los supervisores no vean este panel
 
-# --- VISTA PARA SUPERVISORES (Con Auto-llenado por IA) ---
+# ==========================================
+# VISTA PARA SUPERVISORES (Víctor Manuel y José de Jesús)
+# ==========================================
 st.markdown("---")
-st.markdown("### 📸 1. Evidencia Fotográfica y Auto-llenado Inteligente")
-foto_reporte = st.file_uploader("Tomar o subir foto de la hoja de reporte físico", type=["jpg", "jpeg", "png"], key="foto")
+st.markdown("### 📸 1. Evidencia Fotográfica del Reporte Físico")
+foto_reporte = st.file_uploader("Tomar o subir foto de la hoja de reporte", type=["jpg", "jpeg", "png"], key="foto")
 
 if foto_reporte is not None:
     imagen = Image.open(foto_reporte)
     st.image(imagen, caption="Vista previa de la hoja de reporte física", width=350)
-    
-    if gemini_api_key:
-        if st.button("🤖 Analizar Fotografía con IA y Rellenar Automáticamente"):
-            with st.spinner("Leyendo hoja de reporte y extrayendo campos..."):
-                try:
-                    model = genai.GenerativeModel('gemini-1.5-flash')
-                    prompt = """
-                    Analiza esta imagen de una hoja de reporte de operación de valet parking de Club Park Valet y Estacionamientos.
-                    Extrae la siguiente información en formato JSON exacto:
-                    {
-                        "sitio": "nombre de la unidad o establecimiento (ej. Sushiitto)",
-                        "costo_boleto": numero (ej. 40),
-                        "folio_inicial": numero,
-                        "folio_final": numero,
-                        "folio_sin_desprender": numero (si no aparece, pon 0),
-                        "total_boletos": numero,
-                        "boletos_pagados": numero,
-                        "boletos_cancelados": numero,
-                        "boletos_perdidos": numero,
-                        "total_entregados": numero,
-                        "gastos_operacion": numero (si no aparece, pon 0),
-                        "lider_sueldo": numero (si no aparece, pon 0),
-                        "operador1_sueldo": numero (ej. 280),
-                        "operador2_sueldo": numero (si no aparece, pon 0),
-                        "gastos_especiales": numero (si no aparece, pon 0),
-                        "gastos_generales": numero (si no aparece, pon 0),
-                        "elaboro": "nombre de quien elaboró el reporte",
-                        "recibe": "nombre de quien recibe el reporte"
-                    }
-                    Devuelve ÚNICAMENTE el objeto JSON válido, sin texto adicional.
-                    """
-                    response = model.generate_content([imagen, prompt])
-                    texto_json = response.text.replace("```json", "").replace("```", "").strip()
-                    st.session_state.datos_ia = json.loads(texto_json)
-                    st.success("¡Datos extraídos con éxito! Revisa el formulario abajo.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error al procesar la imagen con IA: {e}")
-    else:
-        st.info("💡 Ingresa tu API Key de Gemini en la barra lateral para habilitar el botón de auto-llenado automático por fotografía.")
-
-# Obtener datos extraídos (si la IA los llenó)
-d = st.session_state.datos_ia
 
 st.markdown("---")
-st.markdown("### 📝 2. Verificación y Captura de Datos del Reporte")
-st.warning("⚠️ Todos los campos son obligatorios. La IA rellenará los campos, pero puedes corregir cualquier valor antes de guardar.")
+st.markdown("### 📝 2. Captura Obligatoria de Datos del Reporte")
+st.warning("⚠️ Todos los campos son obligatorios. Como supervisor puedes registrar operaciones, pero la descarga del reporte semanal y la gestión de auditoría están reservadas exclusivamente para el contador Víctor.")
 
 with st.form("form_reporte_completo"):
     c1, c2, c3 = st.columns(3)
     
     with c1:
         fecha = st.date_input("📅 Fecha", value=date.today())
-        sitio = st.text_input("🏢 Sitio / Unidad*", value=d.get("sitio", ""), placeholder="Ej. Sushiitto")
-        costo_boleto = st.number_input("💵 Costo del Boleto ($)", value=float(d.get("costo_boleto", 40)), step=1.0)
-        folio_inicial = st.number_input("🔢 Folio Inicial Utilizado", value=int(d.get("folio_inicial", 0)), step=1)
-        folio_final = st.number_input("🔢 Folio Final Utilizado", value=int(d.get("folio_final", 0)), step=1)
-        folio_sin_desprender = st.number_input("🔖 Folio inicio sin desprender del block", value=int(d.get("folio_sin_desprender", 0)), step=1)
+        sitio = st.selectbox("🏢 Sitio / Sucursal*", SUCURSALES_CLUB_PARK)
+        costo_boleto = st.number_input("💵 Costo del Boleto ($)", value=40, step=1)
+        folio_inicial = st.number_input("🔢 Folio Inicial Utilizado", value=0, step=1)
+        folio_final = st.number_input("🔢 Folio Final Utilizado", value=0, step=1)
+        folio_sin_desprender = st.number_input("🔖 Folio inicio sin desprender del block", value=0, step=1)
 
     with c2:
-        total_boletos = st.number_input("🎟️ Total de Boletos", value=int(d.get("total_boletos", 0)), step=1)
-        boletos_pagados = st.number_input("✅ Boletos Pagados", value=int(d.get("boletos_pagados", 0)), step=1)
-        boletos_cancelados = st.number_input("❌ Boletos Cancelados", value=int(d.get("boletos_cancelados", 0)), step=1)
-        boletos_perdidos = st.number_input("⚠️ Boletos Pérdidos", value=int(d.get("boletos_perdidos", 0)), step=1)
-        total_boletos_entregados = st.number_input("📦 Total de Boletos Entregados", value=int(d.get("total_entregados", 0)), step=1)
-        gastos_operacion = st.number_input("🛠️ Gastos de Operación ($)", value=float(d.get("gastos_operacion", 0.0)), step=10.0)
+        total_boletos = st.number_input("🎟️ Total de Boletos", value=0, step=1)
+        boletos_pagados = st.number_input("✅ Boletos Pagados", value=0, step=1)
+        boletos_cancelados = st.number_input("❌ Boletos Cancelados", value=0, step=1)
+        boletos_perdidos = st.number_input("⚠️ Boletos Pérdidos", value=0, step=1)
+        total_boletos_entregados = st.number_input("📦 Total de Boletos Entregados", value=0, step=1)
+        gastos_operacion = st.number_input("🛠️ Gastos de Operación ($)", value=0.0, step=10.0)
 
     with c3:
-        lider_sueldo = st.number_input("👔 Líder de Unidad - Sueldo ($)", value=float(d.get("lider_sueldo", 0.0)), step=10.0)
-        operador1_sueldo = st.number_input("👷 Operador 1 - Sueldo ($)", value=float(d.get("operador1_sueldo", 280.0)), step=10.0)
-        operador2_sueldo = st.number_input("👷 Operador 2 - Sueldo ($)", value=float(d.get("operador2_sueldo", 0.0)), step=10.0)
-        gastos_especiales = st.number_input("📌 Gastos Especiales ($)", value=float(d.get("gastos_especiales", 0.0)), step=10.0)
-        gastos_generales = st.number_input("📋 Gastos Generales ($)", value=float(d.get("gastos_generales", 0.0)), step=10.0)
+        lider_sueldo = st.number_input("👔 Líder de Unidad - Sueldo ($)", value=0.0, step=10.0)
+        operador1_sueldo = st.number_input("👷 Operador 1 - Sueldo ($)", value=280.0, step=10.0)
+        operador2_sueldo = st.number_input("👷 Operador 2 - Sueldo ($)", value=0.0, step=10.0)
+        gastos_especiales = st.number_input("📌 Gastos Especiales ($)", value=0.0, step=10.0)
+        gastos_generales = st.number_input("📋 Gastos Generales ($)", value=0.0, step=10.0)
         
     st.markdown("---")
     c4, c5 = st.columns(2)
     with c4:
-        elaboro = st.text_input("✍️ Elaboró Reporte (Nombre)*", value=d.get("elaboro", ""), placeholder="Ej. Gaby")
+        elaboro = st.text_input("✍️ Elaboró Reporte (Nombre)*", placeholder="Ej. Gaby")
     with c5:
-        recibe = st.text_input("👤 Quien Recibe Reporte (Nombre)*", value=d.get("recibe", ""), placeholder="Ej. Jesús")
+        recibe = st.text_input("👤 Quien Recibe Reporte (Nombre)*", placeholder="Ej. Jesús")
 
     # Cálculos automáticos y financieros
     total_sueldos_nominas = lider_sueldo + operador1_sueldo + operador2_sueldo
@@ -209,11 +224,13 @@ with st.form("form_reporte_completo"):
     m3.metric("Ingreso Neto", f"${ingreso_neto:,.2f}", delta=f"${ingreso_neto:,.2f}")
     m4.metric("Cantidad a Entregar", f"${cantidad_entregar:,.2f}")
 
-    submitted = st.form_submit_button("💾 Validar y Guardar Registro en el Consolidado Semanal")
+    submitted = st.form_submit_button("💾 Validar y Guardar Registro en el Consolidado")
 
     if submitted:
-        if not sitio.strip() or not elaboro.strip() or not recibe.strip():
-            st.error("❌ Error de validación: Los campos 'Sitio / Unidad', 'Elaboró Reporte' y 'Quien Recibe Reporte' son obligatorios.")
+        if sitio == "-- Selecciona o busca la sucursal --":
+            st.error("❌ Error de validación: Debes seleccionar una sucursal o sitio válido.")
+        elif not elaboro.strip() or not recibe.strip():
+            st.error("❌ Error de validación: Los campos 'Elaboró Reporte' y 'Quien Recibe Reporte' son obligatorios.")
         elif foto_reporte is None:
             st.warning("⚠️ Advertencia: Es necesario adjuntar la fotografía de la hoja de reporte físico.")
         else:
@@ -245,26 +262,15 @@ with st.form("form_reporte_completo"):
                 "Evidencia Foto": "Sí"
             }
             st.session_state.registros.append(nuevo_registro)
-            st.success(f"¡El reporte del sitio '{sitio}' ha sido validado y guardado exitosamente!")
-            st.session_state.datos_ia = {}
+            st.success(f"¡El reporte del sitio '{sitio}' ha sido validado y guardado exitosamente por {st.session_state.usuario_autenticado}!")
 
-# Sección de visualización y exportación consolidada para supervisores
+# Vista resumida para supervisores (sin botón de descarga de Excel)
 if st.session_state.registros:
     st.markdown("---")
-    st.markdown("### 📈 Consolidado Semanal Acumulado")
+    st.markdown("### 📈 Mis Registros Enviados en la Semana")
     df_reportes = pd.DataFrame(st.session_state.registros)
-    st.dataframe(df_reportes, use_container_width=True)
-
-    csv_export = df_reportes.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="📥 Descargar Reporte Semanal Completo en CSV (Excel)",
-        data=csv_export,
-        file_name="Consolidado_Semanal_ClubPark.csv",
-        mime="text/csv",
-    )
-
-    if st.button("🗑️ Limpiar Todos los Registros"):
-        st.session_state.registros = []
-        st.session_state.datos_ia = {}
-        st.rerun()
-        
+    # Mostrar solo columnas esenciales para supervisores
+    cols_super = [c for c in ["Fecha", "Sitio / Unidad", "Ingreso Neto", "Total Gastos y Nóminas", "Elaboró", "Recibe"] if c in df_reportes.columns]
+    st.dataframe(df_reportes[cols_super], use_container_width=True)
+    st.info("ℹ️ Nota: La descarga del archivo consolidado de Excel y la auditoría general de la semana se encuentran restringidas exclusivamente al usuario Contador (Víctor).")
+    
