@@ -292,13 +292,139 @@ if foto_reporte is not None:
                     st.session_state.f_fin = int(datos_ia.get("folio_final", 0))
                     st.session_state.f_sin = int(datos_ia.get("folio_sin_desprender", 0))
                     st.session_state.f_can = int(datos_ia.get("cancelados", 0))
-                    st.session
+                    st.session_state.f_per = int(datos_ia.get("perdidos", 0))
+                    st.session_state.g_esp = float(datos_ia.get("gastos_especiales", 0.0))
+                    st.session_state.g_gen = float(datos_ia.get("gastos_generales", 0.0))
+                    st.session_state.elaboro_val = str(datos_ia.get("elaboro", ""))
+                    st.session_state.recibe_val = str(datos_ia.get("recibe", ""))
+                    
+                    st.success("✨ ¡Campos autocompletados desde la fotografía exitosamente!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"No se pudo leer automáticamente la imagen: {e}")
 
+st.markdown("---")
+st.markdown("### 📝 2. Captura en Tiempo Real y Validación de Datos")
+st.warning("⚠️ Todos los campos son obligatorios. Las cantidades se calculan al instante en Moneda Nacional Mexicana (MXN).")
 
+sitio = st.selectbox("🏢 Sitio / Sucursal*", SUCURALES_LISTA if "SUCURSALES_LISTA" in locals() else SUCURSALES_LISTA, key="select_sitio", on_change=actualizar_costo_sucursal)
 
+c_live1, c_live2, c_live3 = st.columns(3)
+with c_live1:
+    fecha_reporte = st.date_input("📅 Fecha del Reporte", value=date.today())
+    fecha_formateada = fecha_reporte.strftime("%d/%m/%Y")
+    costo_boleto = st.number_input("💵 Costo del Boleto ($ MXN)", value=int(st.session_state.costo_boleto_val), step=1)
+with c_live2:
+    folio_inicial = st.number_input("🔢 Folio Inicial Utilizado", value=int(st.session_state.f_ini), step=1, key="f_ini")
+    folio_final = st.number_input("🔢 Folio Final Utilizado", value=int(st.session_state.f_fin), step=1, key="f_fin")
+with c_live3:
+    cancelados = st.number_input("❌ Boletos Cancelados", value=int(st.session_state.f_can), step=1, key="f_can")
+    perdidos = st.number_input("⚠️ Boletos Pérdidos", value=int(st.session_state.f_per), step=1, key="f_per")
 
+if int(folio_inicial) == 0 and int(folio_final) == 0:
+    total_boletos_entregados = 0
+else:
+    i_last = int(folio_inicial) % 100
+    f_last = int(folio_final) % 100
+    if f_last >= i_last:
+        total_boletos_entregados = (f_last - i_last) + 1
+    else:
+        total_boletos_entregados = (100 - i_last) + f_last + 1
 
+boletos_pagados = max(0, total_boletos_entregados - cancelados - perdidos)
+ingreso_bruto_live = boletos_pagados * costo_boleto
 
+st.markdown("---")
+st.markdown("### 🛠️ 3. Captura de Gastos (En Tiempo Real)")
 
+col_g1, col_g2 = st.columns(2)
+with col_g1:
+    folio_sin_desprender = st.number_input("🔖 Folio inicio sin desprender del block", value=int(st.session_state.f_sin), step=1, key="f_sin")
+    st.markdown("#### 🛠️ Gastos de Operación")
+with col_g2:
+    gastos_especiales = st.number_input("📌 Gastos Especiales ($ MXN)", value=float(st.session_state.g_esp), step=10.0, key="g_esp")
+    gastos_generales = st.number_input("📋 Gastos Generales ($ MXN)", value=float(st.session_state.g_gen), step=10.0, key="g_gen")
 
+total_gastos_live = gastos_especiales + gastos_generales
+ingreso_neto_live = ingreso_bruto_live - total_gastos_live
+rentabilidad_live = (ingreso_neto_live / ingreso_bruto_live * 100) if ingreso_bruto_live > 0 else 0.0
 
+st.markdown("### 📊 Resumen Financiero en Vivo (MXN)")
+r1, r2, r3, r4, r5 = st.columns(5)
+r1.metric("Boletos Pagados", boletos_pagados)
+r2.metric("Ingreso Bruto", f"${ingreso_bruto_live:,.2f} MXN")
+r3.metric("Total Gastos", f"${total_gastos_live:,.2f} MXN")
+r4.metric("Ingreso Neto (Utilidad)", f"${ingreso_neto_live:,.2f} MXN", delta=f"${ingreso_neto_live:,.2f} MXN")
+r5.metric("Rentabilidad (%)", f"{rentabilidad_live:.2f}%")
+
+st.markdown("---")
+
+with st.form("form_reporte_guardar"):
+    c4, c5 = st.columns(2)
+    with c4:
+        elaboro = st.text_input("✍️ Elaboró Reporte (Nombre)*", value=str(st.session_state.elaboro_val), placeholder="Ej. Gaby")
+    with c5:
+        recibe = st.text_input("👤 Quien Recibe Reporte (Nombre)*", value=str(st.session_state.recibe_val), placeholder="Ej. Jesús")
+
+    submitted = st.form_submit_button("💾 Validar y Guardar Registro en el Consolidado")
+
+    if submitted:
+        if sitio == "-- Selecciona o busca la sucursal --":
+            st.error("❌ Error de validación: Debes seleccionar una sucursal o sitio válido.")
+        elif folio_inicial == 0 and folio_final == 0:
+            st.error("❌ Error de validación: Debes capturar el Folio Inicial y Folio Final.")
+        elif folio_final < folio_inicial:
+            st.error("❌ Error de validación: El Folio Final no puede ser menor que el Folio Inicial.")
+        elif not elaboro.strip() or not recibe.strip():
+            st.error("❌ Error de validación: Los campos 'Elaboró Reporte' y 'Quien Recibe Reporte' son obligatorios.")
+        elif foto_reporte is None:
+            st.warning("⚠️ Advertencia: Es necesario adjuntar la fotografía de la hoja de reporte físico.")
+        else:
+            foto_bytes = None
+            if foto_reporte is not None:
+                img_to_compress = Image.open(foto_reporte)
+                img_to_compress.thumbnail((800, 800))
+                img_io = io.BytesIO()
+                img_to_compress.save(img_io, format="JPEG", quality=75)
+                foto_bytes = img_io.getvalue()
+            
+            nuevo_registro = {
+                "Fecha": fecha_formateada,
+                "Supervisor": st.session_state.usuario_autenticado,
+                "Sitio / Unidad": sitio,
+                "Costo Boleto (MXN)": costo_boleto,
+                "Folio Inicial": folio_inicial,
+                "Folio Final": folio_final,
+                "Folio sin desprender": folio_sin_desprender,
+                "Total Boletos Entregados": total_boletos_entregados,
+                "Boletos Pagados (A Entregar)": boletos_pagados,
+                "Cancelados": cancelados,
+                "Pérdidos": perdidos,
+                "Gastos de Operación": "Título Informativo",
+                "Gastos Especiales (MXN)": gastos_especiales,
+                "Gastos Generales (MXN)": gastos_generales,
+                "Total Gastos y Nóminas (MXN)": total_gastos_live,
+                "Ingreso Bruto (MXN)": ingreso_bruto_live,
+                "Ingreso Neto / Utilidad (MXN)": ingreso_neto_live,
+                "Rentabilidad (%)": round(rentabilidad_live, 2),
+                "Cantidad a Entregar (MXN)": ingreso_neto_live,
+                "Elaboró": elaboro,
+                "Recibe": recibe,
+                "Evidencia Foto": "Sí",
+                "foto_bytes": foto_bytes
+            }
+            st.session_state.registros.append(nuevo_registro)
+            guardar_registros_permanentes(st.session_state.registros)
+            
+            st.success(f"¡El reporte del sitio '{sitio}' ha sido validado y guardado PERMANENTEMENTE por {st.session_state.usuario_autenticado}!")
+
+# --- BOTÓN PARA ENVIAR NOTIFICACIÓN POR WHATSAPP ---
+if st.session_state.registros:
+    st.markdown("---")
+    st.markdown("### 💬 Enviar Notificación del Último Reporte por WhatsApp")
+    ultimo = st.session_state.registros[-1]
+    
+    mensaje_wht = f"REPORTE CLUB PARK\nFecha: {ultimo['Fecha']}\nSucursal: {ultimo['Sitio / Unidad']}\nSupervisor: {ultimo['Supervisor']}\nIngreso Bruto: ${ultimo['Ingreso Bruto (MXN)']:,.2f} MXN\nGastos Totales: ${ultimo['Total Gastos y Nóminas (MXN)']:,.2f} MXN\nIngreso Neto: ${ultimo['Ingreso Neto / Utilidad (MXN)']:,.2f} MXN\nElaboró: {ultimo['Elaboró']} | Recibe: {ultimo['Recibe']}"
+    
+    encoded_msg = urllib.parse.quote(mensaje_wht)
+    whatsapp_url = f"https://wa.me/?text={encoded_msg}
