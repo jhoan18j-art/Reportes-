@@ -135,15 +135,11 @@ if st.session_state.rol == "Contador Auditor":
         
         # --- 1. CONTROL DE REPORTES SUBIDOS POR CADA USUARIO ---
         st.markdown("### 👥 Control de Hojas de Reporte Subidas por Usuario")
-        conteo_usuarios = df_auditoria["Supervisor"].value_counts().reset_index()
-        conteo_usuarios.columns = ["Supervisor / Usuario", "Total de Reportes Subidos"]
-        
-        c_u1, c_u2, c_u3 = st.columns(3)
-        # Asegurar mostrar métricas para cada supervisor aunque tengan 0
         v_manuel_count = df_auditoria[df_auditoria["Supervisor"] == "Víctor Manuel"].shape[0]
         j_jesus_count = df_auditoria[df_auditoria["Supervisor"] == "José de Jesús"].shape[0]
         v_contador_count = df_auditoria[df_auditoria["Supervisor"].str.contains("Contador", case=False, na=False)].shape[0]
         
+        c_u1, c_u2, c_u3 = st.columns(3)
         c_u1.metric("Víctor Manuel", f"{v_manuel_count} reportes")
         c_u2.metric("José de Jesús", f"{j_jesus_count} reportes")
         c_u3.metric("Víctor (Contador)", f"{v_contador_count} reportes")
@@ -152,7 +148,6 @@ if st.session_state.rol == "Contador Auditor":
         
         # --- 2. BALANCE SEMANAL POR UNIDAD / SERVICIO ---
         st.markdown("### 🏢 Balance Semanal por Unidad / Servicio")
-        # Agrupar por sucursal
         df_sucursal = df_auditoria.groupby("Sitio / Unidad").agg({
             "Ingreso Bruto (MXN)": "sum",
             "Total Gastos y Nóminas (MXN)": "sum",
@@ -263,7 +258,7 @@ with st.form("form_reporte_completo"):
         folio_sin_desprender = st.number_input("🔖 Folio inicio sin desprender del block", value=0, step=1)
         gastos_operacion = st.number_input("🛠️ Gastos de Operación ($ MXN)", value=0.0, step=10.0)
         lider_sueldo = st.number_input("👔 Líder de Unidad - Sueldo ($ MXN)", value=0.0, step=10.0)
-        operador1_sueldo = st.number_input("👷 Operador 1 - Sueldo ($ MXN)", value=280.0, step=10.0)
+        operador1_sueldo = st.number_input("👷 Operador 1 - Sueldo ($ MXN)", value=0.0, step=10.0)
     with col_f2:
         operador2_sueldo = st.number_input("👷 Operador 2 - Sueldo ($ MXN)", value=0.0, step=10.0)
         gastos_especiales = st.number_input("📌 Gastos Especiales ($ MXN)", value=0.0, step=10.0)
@@ -339,4 +334,4 @@ if st.session_state.registros:
     cols_super = [c for c in ["Fecha", "Sitio / Unidad", "Boletos Pagados (A Entregar)", "Ingreso Bruto (MXN)", "Total Gastos y Nóminas (MXN)", "Ingreso Neto / Utilidad (MXN)", "Rentabilidad (%)", "Elaboró", "Recibe"] if c in df_reportes.columns]
     st.dataframe(df_reportes[cols_super], use_container_width=True)
     st.info("ℹ️ Nota: La descarga del archivo consolidado de Excel con el análisis financiero completo está reservada exclusivamente para el contador Víctor.")
-        
+    
