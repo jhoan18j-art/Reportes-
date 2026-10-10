@@ -390,23 +390,28 @@ if foto_reporte is not None:
 
             with st.spinner("Analizando reporte físico y leyendo folios/gastos..."):
 
-                prompt_text = (
-                    "Analiza esta imagen de reporte de valet parking y devuelve "
-                    "ÚNICAMENTE un objeto JSON válido con este formato exacto:\n"
-                    "{\n"
-                    '  "folio_inicial": 0,
-                    '  "folio_final": 0,
-                    '  "folio_sin_desprender": 0,
-                    '  "cancelados": 0,
-                    '  "perdidos": 0,
-                    '  "gastos_especiales": 0,
-                    '  "gastos_generales": 0,
-                    '  "elaboro": "",
-                    '  "recibe": "",
-                    "}\"
-                    "Devuelve números enteros para folios y boletos, "
-                    "y números decimales para gastos. "
-                    "No inventes datos que no sean legibles."
+                
+                prompt_text = """
+Analiza esta imagen de reporte de valet parking y devuelve
+ÚNICAMENTE un objeto JSON válido con este formato exacto:
+
+{
+  "folio_inicial": 0,
+  "folio_final": 0,
+  "folio_sin_desprender": 0,
+  "cancelados": 0,
+  "perdidos": 0,
+  "gastos_especiales": 0.0,
+  "gastos_generales": 0.0,
+  "elaboro": "",
+  "recibe": ""
+}
+
+Devuelve números enteros para folios y boletos,
+y números decimales para gastos.
+No inventes datos que no sean legibles.
+"""
+                
                 )
 
                 texto_res = None
