@@ -392,25 +392,47 @@ if foto_reporte is not None:
                     '"recibe": ""}. '
                     "Si la imagen es un boleto individual (como un ticket con un número de folio, ej: 3554), "
                     "coloca ese número de folio tanto en folio_inicial como en folio_final. "
-                    "No inventes datos de gastos si no están impresos."
-                )
-
-                texto_res = None
-
-                try:
-                    from google import genai
-
-                    client = genai.Client(api_key=api_key_env)
-                    response = client.models.generate_content(
-                        model="gemini-2.5-flash",
-                        contents=[prompt_text, imagen]
-                    )
-                    texto_res = (response.text or "").strip()
-
+                    
                 except Exception:
                     try:
                         import google.generativeai as genai_legacy
 
                         genai_legacy.configure(api_key=api_key_env)
-                        model_legacy = genai_legacy.GenerativeModel("gemini-1.5-flash")
-               
+                        model_legacy = genai_legacy.GenerativeModel(
+                            "gemini-1.5-flash"
+                        )
+                        response = model_legacy.generate_content(
+                            [prompt_text, imagen]
+                        )
+                        texto_res = (response.text or "").strip()
+
+                    except Exception as error_ia:
+                        st.error(
+                            f"Error procesando la imagen con IA: {error_ia}"
+                        )
+
+                if texto_res:
+                    try:
+                        texto_res = (
+                            texto_res.replace("```json", "")
+                            .replace("```", "")
+                            .strip()
+                        )
+
+                        data_ia = json.loads(texto_res)
+
+                        st.success("Fotografía analizada correctamente.")
+                        st.json(data_ia)
+
+                        st.session_state["datos_ia"] = data_ia
+
+                    except (json.JSONDecodeError, TypeError) as error_json:
+                        st.error(
+                            f"Error al interpretar los datos de la IA: {error_json}"
+                        )
+                        st.text_area(
+                            "Respuesta recibida de la IA",
+                            value=texto_res,
+                            height=150
+                        )
+                        
