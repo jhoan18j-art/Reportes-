@@ -309,6 +309,12 @@ st.markdown("---")
 dia_semana_actual = date.today().weekday()  # 0 al 4 es de Lunes a Viernes
 if dia_semana_actual < 5:
     st.info("📋 **Control Operativo (Lunes a Viernes):** Meta establecida para supervisores: **15 reportes diarios** requeridos por operación regular.")
+    
+    # Alerta y asignación de unidades obligatorias de lunes a viernes según el supervisor logueado
+    if st.session_state.usuario_autenticado == "José de Jesús":
+        st.warning("🚨 **Unidades obligatorias a reportar hoy (Lunes a Viernes):**\n* **PAMPAS, RAMMA, SUSHITTO, BARRANCA, CARAJILLO, BENINGANS, CLÍNICA**")
+    elif st.session_state.usuario_autenticado == "Víctor Manuel":
+        st.warning("🚨 **Unidades obligatorias a reportar hoy (Lunes a Viernes):**\n* **SUMO STA, CHEGARAY, RYOSHI, ENCANTO, S. AZURA, CHURRASCA**")
 else:
     st.info("📅 **Control de Fines de Semana / Eventos:** Los reportes extraordinarios y de múltiples eventos en salón pueden ser cargados y respaldados directamente por el Contador Víctor.")
 
@@ -413,114 +419,4 @@ r1, r2, r3, r4, r5 = st.columns(5)
 r1.metric("Boletos Pagados", boletos_pagados)
 r2.metric("Ingreso Bruto", f"${ingreso_bruto_live:,.2f} MXN")
 r3.metric("Total Gastos", f"${total_gastos_live:,.2f} MXN")
-r4.metric("Ingreso Neto (Utilidad)", f"${ingreso_neto_live:,.2f} MXN", delta=f"${ingreso_neto_live:,.2f} MXN")
-r5.metric("Rentabilidad (%)", f"{rentabilidad_live:.2f}%")
-
-st.markdown("---")
-
-with st.form("form_reporte_guardar"):
-    c4, c5 = st.columns(2)
-    with c4:
-        elaboro = st.text_input("✍️ Elaboró Reporte (Nombre)*", value=str(st.session_state.elaboro_val), placeholder="Ej. Gaby")
-    with c5:
-        recibe = st.text_input("👤 Quien Recibe Reporte (Nombre)*", value=str(st.session_state.recibe_val), placeholder="Ej. Jesús")
-
-    submitted = st.form_submit_button("💾 Validar y Guardar Registro en el Consolidado")
-
-    if submitted:
-        if sitio == "-- Selecciona o busca la sucursal --":
-            st.error("❌ Error de validación: Debes seleccionar una sucursal o sitio válido.")
-        elif folio_inicial == 0 and folio_final == 0:
-            st.error("❌ Error de validación: Debes capturar el Folio Inicial y Folio Final.")
-        elif folio_final < folio_inicial:
-            st.error("❌ Error de validación: El Folio Final no puede ser menor que el Folio Inicial.")
-        elif not elaboro.strip() or not recibe.strip():
-            st.error("❌ Error de validación: Los campos 'Elaboró Reporte' y 'Quien Recibe Reporte' son obligatorios.")
-        elif foto_reporte is None:
-            st.warning("⚠️ Advertencia: Es necesario adjuntar la fotografía de la hoja de reporte físico.")
-        else:
-            foto_bytes = None
-            if foto_reporte is not None:
-                img_to_compress = Image.open(foto_reporte)
-                img_to_compress.thumbnail((800, 800))
-                img_io = io.BytesIO()
-                img_to_compress.save(img_io, format="JPEG", quality=75)
-                foto_bytes = img_io.getvalue()
-            
-            nuevo_registro = {
-                "Fecha": fecha_formateada,
-                "Supervisor": st.session_state.usuario_autenticado,
-                "Sitio / Unidad": sitio,
-                "Costo Boleto (MXN)": costo_boleto,
-                "Folio Inicial": folio_inicial,
-                "Folio Final": folio_final,
-                "Folio sin desprender": folio_sin_desprender,
-                "Total Boletos Entregados": total_boletos_entregados,
-                "Boletos Pagados (A Entregar)": boletos_pagados,
-                "Cancelados": cancelados,
-                "Pérdidos": perdidos,
-                "Gastos de Operación": "Título Informativo",
-                "Gastos Especiales (MXN)": gastos_especiales,
-                "Gastos Generales (MXN)": gastos_generales,
-                "Total Gastos y Nóminas (MXN)": total_gastos_live,
-                "Ingreso Bruto (MXN)": ingreso_bruto_live,
-                "Ingreso Neto / Utilidad (MXN)": ingreso_neto_live,
-                "Rentabilidad (%)": round(rentabilidad_live, 2),
-                "Cantidad a Entregar (MXN)": ingreso_neto_live,
-                "Elaboró": elaboro,
-                "Recibe": recibe,
-                "Evidencia Foto": "Sí",
-                "foto_bytes": foto_bytes
-            }
-            st.session_state.registros.append(nuevo_registro)
-            guardar_registros_permanentes(st.session_state.registros)
-            
-            st.success(f"¡El reporte del sitio '{sitio}' ha sido validado y guardado PERMANENTEMENTE por {st.session_state.usuario_autenticado}!")
-
-# --- BOTÓN PARA ENVIAR NOTIFICACIÓN POR WHATSAPP ---
-if st.session_state.registros:
-    st.markdown("---")
-    st.markdown("### 💬 Enviar Notificación del Último Reporte por WhatsApp")
-    
-    ultimo = st.session_state.registros[-1]
-    telefono_destino = st.text_input("📱 Número de WhatsApp del Destinatario (Opcional - ej: 5215512345678):", value="")
-    
-    f_fecha = ultimo.get("Fecha", "")
-    f_sitio = ultimo.get("Sitio / Unidad", "")
-    f_sup = ultimo.get("Supervisor", "")
-    f_bruto = ultimo.get("Ingreso Bruto (MXN)", 0.0)
-    f_gastos = ultimo.get("Total Gastos y Nóminas (MXN)", 0.0)
-    f_neto = ultimo.get("Ingreso Neto / Utilidad (MXN)", 0.0)
-    f_elab = ultimo.get("Elaboró", "")
-    f_rec = ultimo.get("Recibe", "")
-
-    mensaje_wht = (
-        f"🚗 *REPORTE CLUB PARK*\n"
-        f"📅 Fecha: {f_fecha}\n"
-        f"🏢 Sucursal: {f_sitio}\n"
-        f"👤 Supervisor: {f_sup}\n"
-        f"💵 Ingreso Bruto: ${f_bruto:,.2f} MXN\n"
-        f"🛠️ Gastos Totales: ${f_gastos:,.2f} MXN\n"
-        f"💰 Ingreso Neto: ${f_neto:,.2f} MXN\n"
-        f"✍️ Elaboró: {f_elab} | Recibe: {f_rec}"
-    )
-    
-    encoded_msg = urllib.parse.quote(mensaje_wht)
-    
-    if telefono_destino.strip():
-        whatsapp_url = f"https://wa.me/{telefono_destino.strip()}?text={encoded_msg}"
-    else:
-        whatsapp_url = f"https://wa.me/?text={encoded_msg}"
-        
-    st.markdown(
-        f"""
-        <div style="text-align: center; margin-top: 20px;">
-            <a href="{whatsapp_url}" target="_blank" style="text-decoration: none;">
-                <button style="background-color: #25D366; color: white; padding: 12px 24px; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer;">
-                    🚀 Enviar Resumen por WhatsApp
-                </button>
-            </a>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+r4.me
