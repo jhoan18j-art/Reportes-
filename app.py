@@ -9,7 +9,7 @@ import base64
 import urllib.parse
 
 # Archivo permanente de base de datos local
-DB_FILE = "reportes_CLUBPARK.json"
+DB_FILE = "reportes_clubpark.json"
 
 # Soporte opcional para análisis automático de imagen con Gemini Vision
 try:
@@ -91,10 +91,6 @@ PRECIOS_SUCURSALES = {
     "E-BNI": 0,
     "CHURRASCA": 70
 }
-
-# Listas de asignación fija de supervisores (Lunes a Viernes)
-UNIDADES_JESUS = ["PAMPAS", "RAMMA", "SUSHITTO", "BARRANCA", "CARAJILLO", "BENINGANS", "CLÍNICA"]
-UNIDADES_VICTOR = ["SUMO STA", "CHEGARAY", "RYOSHI", "ENCANTO", "S. AZURA", "CHURRASCA"]
 
 SUCURSALES_LISTA = ["-- Selecciona o busca la sucursal --"] + list(PRECIOS_SUCURSALES.keys())
 
@@ -180,57 +176,8 @@ st.sidebar.info(f"**Usuario actual:** {st.session_state.usuario_autenticado}\n\n
 if st.session_state.rol == "Contador Auditor":
     st.markdown("---")
     st.markdown("## 🔍 Panel de Auditoría, Balance Financiero y Control de Eventos (Contador)")
-    st.info("Estimado Víctor, desde este panel tienes acceso al control masivo, balance semanal y facultad especial para registrar reportes de eventos y notificar faltantes.")
+    st.info("Estimado Víctor, desde este panel tienes acceso al control masivo, balance semanal y facultad especial para registrar reportes de eventos y fines de semana.")
     
-    # --- SECCIÓN DE NOTIFICACIÓN DE REPORTES FALTANTES POR WHATSAPP ---
-    with st.expander("📲 Enviar Recordatorio de Reportes Faltantes por WhatsApp", expanded=True):
-        st.markdown("### 🔔 Control de Reportes Faltantes a Supervisores")
-        fecha_revision = st.date_input("Selecciona la fecha a revisar:", value=date.today(), key="fecha_rev_contador")
-        fecha_rev_str = fecha_revision.strftime("%d/%m/%Y")
-        
-        unidades_reportadas_fecha = [
-            reg["Sitio / Unidad"] for reg in st.session_state.registros if reg.get("Fecha") == fecha_rev_str
-        ]
-        
-        faltantes_jesus = [u for u in UNIDADES_JESUS if u not in unidades_reportadas_fecha]
-        faltantes_victor = [u for u in UNIDADES_VICTOR if u not in unidades_reportadas_fecha]
-        
-        col_notif1, col_notif2 = st.columns(2)
-        
-        with col_notif1:
-            st.markdown("#### 👤 Supervisor: José de Jesús")
-            if faltantes_jesus:
-                st.warning(f"⚠️ **Pendientes ({len(faltantes_jesus)}):** " + ", ".join(faltantes_jesus))
-                msg_jesus = (
-                    f"🚨 *RECORDATORIO DE REPORTES FALTANTES*\n"
-                    f"📅 *Fecha:* {fecha_rev_str}\n"
-                    f"👤 *Hola José de Jesús,* te hacen falta por subir los reportes de las siguientes unidades:\n\n"
-                    + "\n".join([f"❌ {u}" for u in faltantes_jesus]) +
-                    f"\n\nPor favor sube tus reportes lo antes posible a la plataforma."
-                )
-                url_jesus = f"https://api.whatsapp.com/send?text={urllib.parse.quote(msg_jesus)}"
-                st.markdown(f"[📲 **Enviar WhatsApp a Jesús**]({url_jesus})", unsafe_allow_html=True)
-            else:
-                st.success("✅ ¡José de Jesús ha completado todos sus reportes para esta fecha!")
-                
-        with col_notif2:
-            st.markdown("#### 👤 Supervisor: Víctor Manuel")
-            if faltantes_victor:
-                st.warning(f"⚠️ **Pendientes ({len(faltantes_victor)}):** " + ", ".join(faltantes_victor))
-                msg_victor = (
-                    f"🚨 *RECORDATORIO DE REPORTES FALTANTES*\n"
-                    f"📅 *Fecha:* {fecha_rev_str}\n"
-                    f"👤 *Hola Víctor Manuel,* te hacen falta por subir los reportes de las siguientes unidades:\n\n"
-                    + "\n".join([f"❌ {u}" for u in faltantes_victor]) +
-                    f"\n\nPor favor sube tus reportes lo antes posible a la plataforma."
-                )
-                url_victor = f"https://api.whatsapp.com/send?text={urllib.parse.quote(msg_victor)}"
-                st.markdown(f"[📲 **Enviar WhatsApp a Víctor**]({url_victor})", unsafe_allow_html=True)
-            else:
-                st.success("✅ ¡Víctor Manuel ha completado todos sus reportes para esta fecha!")
-
-    st.markdown("---")
-
     with st.expander("🎪 Registrar Reporte de Eventos / Fines de Semana (Facultad del Contador)"):
         st.warning("Como Contador Auditor, puedes dar de alta reportes adicionales de eventos (múltiples por salón/día) en cualquier fecha.")
         with st.form("form_evento_contador"):
@@ -412,57 +359,68 @@ if foto_reporte is not None:
                     st.session_state.g_esp = float(datos_ia.get("gastos_especiales", 0.0))
                     st.session_state.g_gen = float(datos_ia.get("gastos_generales", 0.0))
                     st.session_state.elaboro_val = str(datos_ia.get("elaboro", ""))
-                    st.session_state.elaboro_val = str(datos_ia.get("elaboro", ""))
                     st.session_state.recibe_val = str(datos_ia.get("recibe", ""))
                     
-        if st.button("🤖 Analizar Foto y Llenar Datos Automáticamente con IA"):
-            with st.spinner("Analizando reporte físico y leyendo folios/gastos..."):
-                try:
-                    genai.configure(api_key=api_key_env)
-                    model = genai.GenerativeModel("gemini-1.5-flash")
-
-                    prompt = """
-                    Analiza esta imagen de reporte de valet parking.
-                    Devuelve ÚNICAMENTE un objeto JSON válido con este formato:
-                    {
-                        "folio_inicial": 0,
-                        "folio_final": 0,
-                        "folio_sin_desprender": 0,
-                        "cancelados": 0,
-                        "perdidos": 0,
-                        "gastos_especiales": 0.0,
-                        "gastos_generales": 0.0,
-                        "elaboro": "",
-                        "recibe": ""
-                    }
-                    Usa números para folios y gastos.
-                    Si un dato no es legible, utiliza 0 o una cadena vacía.
-                    """
-
-                    response = model.generate_content([prompt, imagen])
-
-                    texto_res = response.text.strip()
-                    texto_res = texto_res.replace("```json", "").replace("```", "").strip()
-
-                    datos_ia = json.loads(texto_res)
-
-                    st.session_state.f_ini = int(datos_ia.get("folio_inicial", 0))
-                    st.session_state.f_fin = int(datos_ia.get("folio_final", 0))
-                    st.session_state.f_sin = int(datos_ia.get("folio_sin_desprender", 0))
-                    st.session_state.f_can = int(datos_ia.get("cancelados", 0))
-                    st.session_state.f_per = int(datos_ia.get("perdidos", 0))
-                    st.session_state.g_esp = float(datos_ia.get("gastos_especiales", 0.0))
-                    st.session_state.g_gen = float(datos_ia.get("gastos_generales", 0.0))
-                    st.session_state.elaboro_val = str(datos_ia.get("elaboro", ""))
-                    st.session_state.recibe_val = str(datos_ia.get("recibe", ""))
-
-                    st.success("Datos extraídos de la fotografía correctamente.")
+                    st.success("✨ ¡Campos autocompletados desde la fotografía exitosamente!")
                     st.rerun()
-
-                except json.JSONDecodeError:
-                    st.error("La IA no devolvió un JSON válido. Intenta analizar la fotografía nuevamente.")
-
                 except Exception as e:
-                    st.error(f"Error al analizar la fotografía: {e}")
-                    
+                    st.error(f"No se pudo leer automáticamente la imagen: {e}")
 
+st.markdown("---")
+st.markdown("### 📝 2. Captura en Tiempo Real y Validación de Datos")
+st.warning("⚠️ Todos los campos son obligatorios. Las cantidades se calculan al instante en Moneda Nacional Mexicana (MXN).")
+
+sitio = st.selectbox("🏢 Sitio / Sucursal*", SUCURSALES_LISTA, key="select_sitio", on_change=actualizar_costo_sucursal)
+
+c_live1, c_live2, c_live3 = st.columns(3)
+with c_live1:
+    fecha_reporte = st.date_input("📅 Fecha del Reporte", value=date.today())
+    fecha_formateada = fecha_reporte.strftime("%d/%m/%Y")
+    costo_boleto = st.number_input("💵 Costo del Boleto ($ MXN)", value=int(st.session_state.costo_boleto_val), step=1)
+with c_live2:
+    folio_inicial = st.number_input("🔢 Folio Inicial Utilizado", value=int(st.session_state.f_ini), step=1, key="f_ini")
+    folio_final = st.number_input("🔢 Folio Final Utilizado", value=int(st.session_state.f_fin), step=1, key="f_fin")
+with c_live3:
+    cancelados = st.number_input("❌ Boletos Cancelados", value=int(st.session_state.f_can), step=1, key="f_can")
+    perdidos = st.number_input("⚠️ Boletos Pérdidos", value=int(st.session_state.f_per), step=1, key="f_per")
+
+if int(folio_inicial) == 0 and int(folio_final) == 0:
+    total_boletos_entregados = 0
+else:
+    i_last = int(folio_inicial) % 100
+    f_last = int(folio_final) % 100
+    if f_last >= i_last:
+        total_boletos_entregados = (f_last - i_last) + 1
+    else:
+        total_boletos_entregados = (100 - i_last) + f_last + 1
+
+boletos_pagados = max(0, total_boletos_entregados - cancelados - perdidos)
+ingreso_bruto_live = boletos_pagados * costo_boleto
+
+st.markdown("---")
+st.markdown("### 🛠️ 3. Captura de Gastos (En Tiempo Real)")
+
+col_g1, col_g2 = st.columns(2)
+with col_g1:
+    folio_sin_desprender = st.number_input("🔖 Folio inicio sin desprender del block", value=int(st.session_state.f_sin), step=1, key="f_sin")
+    st.markdown("#### 🛠️ Gastos de Operación")
+with col_g2:
+    gastos_especiales = st.number_input("📌 Gastos Especiales ($ MXN)", value=float(st.session_state.g_esp), step=10.0, key="g_esp")
+    gastos_generales = st.number_input("📋 Gastos Generales ($ MXN)", value=float(st.session_state.g_gen), step=10.0, key="g_gen")
+
+total_gastos_live = gastos_especiales + gastos_generales
+ingreso_neto_live = ingreso_bruto_live - total_gastos_live
+rentabilidad_live = (ingreso_neto_live / ingreso_bruto_live * 100) if ingreso_bruto_live > 0 else 0.0
+
+st.markdown("### 📊 Resumen Financiero en Vivo (MXN)")
+r1, r2, r3, r4, r5 = st.columns(5)
+r1.metric("Boletos Pagados", boletos_pagados)
+r2.metric("Ingreso Bruto", f"${ingreso_bruto_live:,.2f} MXN")
+r3.metric("Total Gastos", f"${total_gastos_live:,.2f} MXN")
+r4.metric("Ingreso Neto (Utilidad)", f"${ingreso_neto_live:,.2f} MXN")
+r5.metric("Rentabilidad (%)", f"{rentabilidad_live:.2f}%")
+
+st.markdown("---")
+
+with st.form("form_reporte_guardar"):
+    
