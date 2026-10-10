@@ -423,3 +423,4 @@ r5.metric("Rentabilidad (%)", f"{rentabilidad_live:.2f}%")
 st.markdown("---")
 
 with st.form("form_reporte_guardar"):
+    
