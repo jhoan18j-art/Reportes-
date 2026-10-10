@@ -152,7 +152,7 @@ if st.session_state.rol == "Contador Auditor":
     st.stop()
 
 # ==========================================
-# VISTA PARA SUPERVISORES (Víctor Manuel y José de Jesús)
+# VISTA PARA SUPERVISORES (Con actualización en tiempo real)
 # ==========================================
 st.markdown("---")
 st.markdown("### 📸 1. Evidencia Fotográfica del Reporte Físico")
@@ -163,47 +163,53 @@ if foto_reporte is not None:
     st.image(imagen, caption="Vista previa de la hoja de reporte física", width=350)
 
 st.markdown("---")
-st.markdown("### 📝 2. Captura Obligatoria de Datos del Reporte")
-st.warning("⚠️ Todos los campos son obligatorios. Las cantidades deben ingresarse en Moneda Nacional Mexicana (MXN).")
+st.markdown("### 📝 2. Captura en Tiempo Real y Validación de Datos")
+st.warning("⚠️ Todos los campos son obligatorios. Las cantidades se calculan al instante en Moneda Nacional Mexicana (MXN).")
 
+# Selección de sucursal fuera del form para actualizar costo al instante
 sitio = st.selectbox("🏢 Sitio / Sucursal*", SUCURSALES_LISTA, key="select_sitio", on_change=actualizar_costo_sucursal)
 
+# Sección interactiva fuera del formulario para mostrar cálculos en vivo
+c_live1, c_live2, c_live3 = st.columns(3)
+with c_live1:
+    fecha_reporte = st.date_input("📅 Fecha del Reporte", value=date.today())
+    fecha_formateada = fecha_reporte.strftime("%d/%m/%Y")
+    costo_boleto = st.number_input("💵 Costo del Boleto ($ MXN)", value=int(st.session_state.costo_boleto_val), step=1)
+with c_live2:
+    folio_inicial = st.number_input("🔢 Folio Inicial Utilizado", value=0, step=1, key="f_ini")
+    folio_final = st.number_input("🔢 Folio Final Utilizado", value=0, step=1, key="f_fin")
+with c_live3:
+    cancelados = st.number_input("❌ Boletos Cancelados", value=0, step=1, key="f_can")
+    perdidos = st.number_input("⚠️ Boletos Pérdidos", value=0, step=1, key="f_per")
+
+# --- CÁLCULO EN TIEMPO REAL (Basado en terminaciones / últimos dos dígitos) ---
+i_last = int(folio_inicial) % 100
+f_last = int(folio_final) % 100
+if f_last >= i_last:
+    total_boletos_entregados = (f_last - i_last) + 1
+else:
+    total_boletos_entregados = (100 - i_last) + f_last + 1
+
+boletos_pagados = max(0, total_boletos_entregados - cancelados - perdidos)
+ingreso_bruto_live = boletos_pagados * costo_boleto
+
+# Mostrar métricas en vivo inmediatamente en pantalla
+st.info(f"📊 **Cálculo en vivo:** Total Entregados (Folios): **{total_boletos_entregados}** | 🎟️ **Boletos a Entregar (Pagados): {boletos_pagados}** | 💵 **Ingreso Bruto: ${ingreso_bruto_live:,.2f} MXN**")
+
+st.markdown("---")
+
 with st.form("form_reporte_completo"):
-    c1, c2, c3 = st.columns(3)
-    
-    with c1:
-        fecha_reporte = st.date_input("📅 Fecha del Reporte", value=date.today())
-        fecha_formateada = fecha_reporte.strftime("%d/%m/%Y")
-        
-        costo_boleto = st.number_input("💵 Costo del Boleto ($ MXN)", value=int(st.session_state.costo_boleto_val), step=1)
-        
-        folio_inicial = st.number_input("🔢 Folio Inicial Utilizado", value=0, step=1)
-        folio_final = st.number_input("🔢 Folio Final Utilizado", value=0, step=1)
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
         folio_sin_desprender = st.number_input("🔖 Folio inicio sin desprender del block", value=0, step=1)
-
-    with c2:
-        cancelados = st.number_input("❌ Boletos Cancelados", value=0, step=1)
-        perdidos = st.number_input("⚠️ Boletos Pérdidos", value=0, step=1)
-        
-        # --- REGLA DE CÁLCULO DE FOLIOS POR TERMINACIONES (ÚLTIMOS DOS DÍGITOS) ---
-        i_last = int(folio_inicial) % 100
-        f_last = int(folio_final) % 100
-        if f_last >= i_last:
-            total_boletos_entregados = (f_last - i_last) + 1
-        else:
-            total_boletos_entregados = (100 - i_last) + f_last + 1
-            
-        st.info(f"📦 Boletos Entregados (Por terminaciones): **{total_boletos_entregados}**")
-
         gastos_operacion = st.number_input("🛠️ Gastos de Operación ($ MXN)", value=0.0, step=10.0)
-
-    with c3:
         lider_sueldo = st.number_input("👔 Líder de Unidad - Sueldo ($ MXN)", value=0.0, step=10.0)
         operador1_sueldo = st.number_input("👷 Operador 1 - Sueldo ($ MXN)", value=280.0, step=10.0)
+    with col_f2:
         operador2_sueldo = st.number_input("👷 Operador 2 - Sueldo ($ MXN)", value=0.0, step=10.0)
         gastos_especiales = st.number_input("📌 Gastos Especiales ($ MXN)", value=0.0, step=10.0)
         gastos_generales = st.number_input("📋 Gastos Generales ($ MXN)", value=0.0, step=10.0)
-        
+
     st.markdown("---")
     c4, c5 = st.columns(2)
     with c4:
@@ -211,25 +217,19 @@ with st.form("form_reporte_completo"):
     with c5:
         recibe = st.text_input("👤 Quien Recibe Reporte (Nombre)*", placeholder="Ej. Jesús")
 
-    # --- CÁLCULO FINAL DE BOLETOS PAGADOS Y MULTIPLICACIÓN POR COSTO ---
-    boletos_pagados = max(0, total_boletos_entregados - cancelados - perdidos)
-    
+    # Cálculos financieros finales dentro del form
     total_sueldos_nominas = lider_sueldo + operador1_sueldo + operador2_sueldo
     total_gastos = gastos_operacion + gastos_especiales + gastos_generales + total_sueldos_nominas
-    
-    # Multiplicación exacta de los boletos a entregar por el costo del boleto
-    ingreso_bruto = boletos_pagados * costo_boleto
-    ingreso_neto = ingreso_bruto - total_gastos
+    ingreso_neto = ingreso_bruto_live - total_gastos
     cantidad_entregar = ingreso_neto
-    
-    rentabilidad_porcentaje = (ingreso_neto / ingreso_bruto * 100) if ingreso_bruto > 0 else 0.0
+    rentabilidad_porcentaje = (ingreso_neto / ingreso_bruto_live * 100) if ingreso_bruto_live > 0 else 0.0
 
-    st.markdown("### 📊 Resumen Financiero y Conteo de Boletos (MXN)")
+    st.markdown("### 📊 Resumen Financiero Consolidado (MXN)")
     r1, r2, r3, r4 = st.columns(4)
-    r1.metric("Boletos a Entregar (Pagados)", boletos_pagados)
-    r2.metric("Total Entregados (Folios)", total_boletos_entregados)
-    r3.metric("Ingreso Bruto", f"${ingreso_bruto:,.2f} MXN")
-    r4.metric("Ingreso Neto (Utilidad)", f"${ingreso_neto:,.2f} MXN", delta=f"${ingreso_neto:,.2f} MXN")
+    r1.metric("Boletos a Entregar", boletos_pagados)
+    r2.metric("Total Gastos y Nóminas", f"${total_gastos:,.2f} MXN")
+    r3.metric("Ingreso Neto (Utilidad)", f"${ingreso_neto:,.2f} MXN", delta=f"${ingreso_neto:,.2f} MXN")
+    r4.metric("Rentabilidad (%)", f"{rentabilidad_porcentaje:.2f}%")
 
     submitted = st.form_submit_button("💾 Validar y Guardar Registro en el Consolidado")
 
@@ -262,7 +262,7 @@ with st.form("form_reporte_completo"):
                 "Gastos Especiales (MXN)": gastos_especiales,
                 "Total Gastos y Nóminas (MXN)": total_gastos,
                 "Gastos Generales (MXN)": gastos_generales,
-                "Ingreso Bruto (MXN)": ingreso_bruto,
+                "Ingreso Bruto (MXN)": ingreso_bruto_live,
                 "Ingreso Neto / Utilidad (MXN)": ingreso_neto,
                 "Rentabilidad (%)": round(rentabilidad_porcentaje, 2),
                 "Cantidad a Entregar (MXN)": cantidad_entregar,
@@ -280,4 +280,4 @@ if st.session_state.registros:
     cols_super = [c for c in ["Fecha", "Sitio / Unidad", "Boletos Pagados (A Entregar)", "Ingreso Bruto (MXN)", "Total Gastos y Nóminas (MXN)", "Ingreso Neto / Utilidad (MXN)", "Rentabilidad (%)", "Elaboró", "Recibe"] if c in df_reportes.columns]
     st.dataframe(df_reportes[cols_super], use_container_width=True)
     st.info("ℹ️ Nota: La descarga del archivo consolidado de Excel con el análisis financiero completo está reservada exclusivamente para el contador Víctor.")
-    
+                
