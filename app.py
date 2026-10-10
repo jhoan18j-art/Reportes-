@@ -6,6 +6,7 @@ import os
 import io
 import json
 import base64
+import urllib.parse
 
 # Archivo permanente de base de datos local
 DB_FILE = "reportes_clubpark.json"
@@ -40,7 +41,6 @@ def cargar_registros_guardados():
         try:
             with open(DB_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                # Convertir cadenas base64 de fotos a bytes
                 for reg in data:
                     if reg.get("foto_b64"):
                         reg["foto_bytes"] = base64.b64decode(reg["foto_b64"])
@@ -63,16 +63,14 @@ def guardar_registros_permanentes(registros):
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(data_to_save, f, ensure_ascii=False, indent=4)
 
-# Cargar registros en la sesión desde el archivo permanente al iniciar la app
 if "registros" not in st.session_state:
     st.session_state.registros = cargar_registros_guardados()
 
-# Diccionario oficial con los costos predeterminados en Pesos Mexicanos ($ M.N.) por sucursal
 PRECIOS_SUCURSALES = {
     "PAMPAS": 50,
     "RAMMA": 70,
     "SUSHITTO": 40,
-    "BARRANCA": 0,      # Tiempo libre / Variable
+    "BARRANCA": 0,
     "CARAJILLO": 100,
     "BENINGANS": 40,
     "ROMAS": 65,
@@ -83,7 +81,7 @@ PRECIOS_SUCURSALES = {
     "sipily": 80,
     "M SATÉLITE": 70,
     "M MARINA": 70,
-    "VETERINARIA": 0,   # No cobra
+    "VETERINARIA": 0,
     "CLÍNICA": 100,
     "SUMO STA": 50,
     "CHEGARAY": 50,
@@ -96,11 +94,9 @@ PRECIOS_SUCURSALES = {
 
 SUCURSALES_LISTA = ["-- Selecciona o busca la sucursal --"] + list(PRECIOS_SUCURSALES.keys())
 
-# Inicializar costo en session_state si no existe
 if "costo_boleto_val" not in st.session_state:
     st.session_state.costo_boleto_val = 40
 
-# Claves homogéneas por defecto en session_state para evitar conflictos de tipos
 defaults = {
     "f_ini": 0,
     "f_fin": 0,
@@ -121,12 +117,10 @@ def actualizar_costo_sucursal():
     if sucursal_seleccionada in PRECIOS_SUCURSALES:
         st.session_state.costo_boleto_val = PRECIOS_SUCURSALES[sucursal_seleccionada]
 
-# Sistema de Autenticación de Usuarios
 if "usuario_autenticado" not in st.session_state:
     st.session_state.usuario_autenticado = None
     st.session_state.rol = None
 
-# Pantalla de Login si no ha iniciado sesión
 if st.session_state.usuario_autenticado is None:
     col_l1, col_l2, col_l3 = st.columns([1, 2, 1])
     with col_l2:
@@ -157,9 +151,6 @@ if st.session_state.usuario_autenticado is None:
                 st.error("❌ Contraseña incorrecta o usuario no seleccionado.")
     st.stop()
 
-# --- A PARTIR DE AQUÍ EL USUARIO YA ESTÁ LOGUEADO ---
-
-# Cabecera institucional con el Logotipo oficial integrado
 col_logo, col_titulo = st.columns([1, 4])
 with col_logo:
     if os.path.exists("logo.png"):
@@ -171,7 +162,6 @@ with col_titulo:
     st.title("CLUB PARK VALET Y ESTACIONAMIENTOS S.A. DE C.V.")
     st.subheader(f"Bienvenido, {st.session_state.usuario_autenticado} ({st.session_state.rol})")
 
-# Botón para cerrar sesión
 if st.sidebar.button("🚪 Cerrar Sesión"):
     st.session_state.usuario_autenticado = None
     st.session_state.rol = None
@@ -195,7 +185,6 @@ if st.session_state.rol == "Contador Auditor":
             registros_limpios.append(reg_sin_bytes)
         df_auditoria = pd.DataFrame(registros_limpios)
         
-        # --- 1. CONTROL DE REPORTES SUBIDOS POR CADA USUARIO ---
         st.markdown(f"### 👥 Control de Hojas de Reporte Subidas (Total Almacenado: {len(st.session_state.registros)})")
         v_manuel_count = df_auditoria[df_auditoria["Supervisor"] == "Víctor Manuel"].shape[0]
         j_jesus_count = df_auditoria[df_auditoria["Supervisor"] == "José de Jesús"].shape[0]
@@ -207,8 +196,6 @@ if st.session_state.rol == "Contador Auditor":
         c_u3.metric("Víctor (Contador)", f"{v_contador_count} reportes")
 
         st.markdown("---")
-        
-        # --- 2. BALANCE SEMANAL POR UNIDAD / SERVICIO ---
         st.markdown("### 🏢 Balance Semanal por Unidad / Servicio")
         df_sucursal = df_auditoria.groupby("Sitio / Unidad").agg({
             "Ingreso Bruto (MXN)": "sum",
@@ -218,18 +205,6 @@ if st.session_state.rol == "Contador Auditor":
         }).reset_index()
         
         st.dataframe(df_sucursal, use_container_width=True)
-        
-        if not df_sucursal.empty:
-            mas_rentable = df_sucursal.loc[df_sucursal["Rentabilidad (%)"].idxmax()]
-            menos_rentable = df_sucursal.loc[df_sucursal["Rentabilidad (%)"].idxmin()]
-            mayor_ingreso = df_sucursal.loc[df_sucursal["Ingreso Bruto (MXN)"].idxmax()]
-            mayor_gasto = df_sucursal.loc[df_sucursal["Total Gastos y Nóminas (MXN)"].idxmax()]
-            
-            b1, b2, b3, b4 = st.columns(4)
-            b1.success(f"🌟 **Más Rentable:**\n\n{mas_rentable['Sitio / Unidad']} ({mas_rentable['Rentabilidad (%)']:.2f}%)")
-            b2.warning(f"⚠️ **Menos Rentable:**\n\n{menos_rentable['Sitio / Unidad']} ({menos_rentable['Rentabilidad (%)']:.2f}%)")
-            b3.info(f"💵 **Mayor Ingreso:**\n\n{mayor_ingreso['Sitio / Unidad']} (${mayor_ingreso['Ingreso Bruto (MXN)']:,.2f})")
-            b4.error(f"🛠️ **Mayor Gasto:**\n\n{mayor_gasto['Sitio / Unidad']} (${mayor_gasto['Total Gastos y Nóminas (MXN)']:,.2f})")
 
         st.markdown("---")
         st.markdown("### 📊 Tabla Global de Todos los Reportes Acumulados")
@@ -275,7 +250,7 @@ if st.session_state.rol == "Contador Auditor":
     st.stop()
 
 # ==========================================
-# VISTA PARA SUPERVISORES (Con actualización en tiempo real y Lectura por IA)
+# VISTA PARA SUPERVISORES
 # ==========================================
 st.markdown("---")
 st.markdown("### 📸 1. Evidencia Fotográfica del Reporte Físico")
@@ -285,7 +260,6 @@ if foto_reporte is not None:
     imagen = Image.open(foto_reporte)
     st.image(imagen, caption="Vista previa de la hoja de reporte física", width=350)
     
-    # --- FUNCIÓN DE LECTURA ESTRUCTURADA POR IA VISION ---
     api_key_env = os.environ.get("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", "")
     if GENAI_AVAILABLE and api_key_env:
         if st.button("🤖 Analizar Foto y Llenar Datos Automáticamente con IA"):
@@ -314,7 +288,6 @@ if foto_reporte is not None:
                     texto_res = response.text.strip().replace("```json", "").replace("```", "")
                     datos_ia = json.loads(texto_res)
                     
-                    # Actualizar session_state con los valores extraídos por la IA
                     st.session_state.f_ini = int(datos_ia.get("folio_inicial", 0))
                     st.session_state.f_fin = int(datos_ia.get("folio_final", 0))
                     st.session_state.f_sin = int(datos_ia.get("folio_sin_desprender", 0))
@@ -334,10 +307,8 @@ st.markdown("---")
 st.markdown("### 📝 2. Captura en Tiempo Real y Validación de Datos")
 st.warning("⚠️ Todos los campos son obligatorios. Las cantidades se calculan al instante en Moneda Nacional Mexicana (MXN).")
 
-# Selección de sucursal fuera para actualizar costo al instante
 sitio = st.selectbox("🏢 Sitio / Sucursal*", SUCURSALES_LISTA, key="select_sitio", on_change=actualizar_costo_sucursal)
 
-# Sección interactiva fuera del formulario para mostrar cálculos en vivo
 c_live1, c_live2, c_live3 = st.columns(3)
 with c_live1:
     fecha_reporte = st.date_input("📅 Fecha del Reporte", value=date.today())
@@ -350,7 +321,6 @@ with c_live3:
     cancelados = st.number_input("❌ Boletos Cancelados", value=int(st.session_state.f_can), step=1, key="f_can")
     perdidos = st.number_input("⚠️ Boletos Pérdidos", value=int(st.session_state.f_per), step=1, key="f_per")
 
-# --- CÁLCULO DE FOLIOS EN TIEMPO REAL (SI ESTÁN EN CERO ES 0) ---
 if int(folio_inicial) == 0 and int(folio_final) == 0:
     total_boletos_entregados = 0
 else:
@@ -370,12 +340,11 @@ st.markdown("### 🛠️ 3. Captura de Gastos (En Tiempo Real)")
 col_g1, col_g2 = st.columns(2)
 with col_g1:
     folio_sin_desprender = st.number_input("🔖 Folio inicio sin desprender del block", value=int(st.session_state.f_sin), step=1, key="f_sin")
-    st.markdown("#### 🛠️ Gastos de Operación")  # Título informativo
+    st.markdown("#### 🛠️ Gastos de Operación")
 with col_g2:
     gastos_especiales = st.number_input("📌 Gastos Especiales ($ MXN)", value=float(st.session_state.g_esp), step=10.0, key="g_esp")
     gastos_generales = st.number_input("📋 Gastos Generales ($ MXN)", value=float(st.session_state.g_gen), step=10.0, key="g_gen")
 
-# --- CÁLCULO TOTAL DE GASTOS Y UTILIDAD EN TIEMPO REAL ---
 total_gastos_live = gastos_especiales + gastos_generales
 ingreso_neto_live = ingreso_bruto_live - total_gastos_live
 rentabilidad_live = (ingreso_neto_live / ingreso_bruto_live * 100) if ingreso_bruto_live > 0 else 0.0
@@ -411,7 +380,6 @@ with st.form("form_reporte_guardar"):
         elif foto_reporte is None:
             st.warning("⚠️ Advertencia: Es necesario adjuntar la fotografía de la hoja de reporte físico.")
         else:
-            # Comprimir la imagen para optimizar el almacenamiento local y la exportación masiva
             foto_bytes = None
             if foto_reporte is not None:
                 img_to_compress = Image.open(foto_reporte)
@@ -421,4 +389,50 @@ with st.form("form_reporte_guardar"):
                 foto_bytes = img_io.getvalue()
             
             nuevo_registro = {
-                "Fecha"
+                "Fecha": fecha_formateada,
+                "Supervisor": st.session_state.usuario_autenticado,
+                "Sitio / Unidad": sitio,
+                "Costo Boleto (MXN)": costo_boleto,
+                "Folio Inicial": folio_inicial,
+                "Folio Final": folio_final,
+                "Folio sin desprender": folio_sin_desprender,
+                "Total Boletos Entregados": total_boletos_entregados,
+                "Boletos Pagados (A Entregar)": boletos_pagados,
+                "Cancelados": cancelados,
+                "Pérdidos": perdidos,
+                "Gastos de Operación": "Título Informativo",
+                "Gastos Especiales (MXN)": gastos_especiales,
+                "Gastos Generales (MXN)": gastos_generales,
+                "Total Gastos y Nóminas (MXN)": total_gastos_live,
+                "Ingreso Bruto (MXN)": ingreso_bruto_live,
+                "Ingreso Neto / Utilidad (MXN)": ingreso_neto_live,
+                "Rentabilidad (%)": round(rentabilidad_live, 2),
+                "Cantidad a Entregar (MXN)": ingreso_neto_live,
+                "Elaboró": elaboro,
+                "Recibe": recibe,
+                "Evidencia Foto": "Sí",
+                "foto_bytes": foto_bytes
+            }
+            st.session_state.registros.append(nuevo_registro)
+            guardar_registros_permanentes(st.session_state.registros)
+            
+            st.success(f"¡El reporte del sitio '{sitio}' ha sido validado y guardado PERMANENTEMENTE por {st.session_state.usuario_autenticado}!")
+
+# --- BOTÓN PARA ENVIAR NOTIFICACIÓN POR WHATSAPP ---
+if st.session_state.registros:
+    st.markdown("---")
+    st.markdown("### 💬 Enviar Notificación del Último Reporte por WhatsApp")
+    ultimo = st.session_state.registros[-1]
+    
+    mensaje_wht = (
+        f"🚗 *REPORTE CLUB PARK* 🚗\n"
+        f"📅 Fecha: {ultimo['Fecha']}\n"
+        f"🏢 Sucursal: {ultimo['Sitio / Unidad']}\n"
+        f"👤 Supervisor: {ultimo['Supervisor']}\n"
+        f"💵 Ingreso Bruto: ${ultimo['Ingreso Bruto (MXN)']:,.2f} MXN\n"
+        f"🛠️ Gastos Totales: ${ultimo['Total Gastos y Nóminas (MXN)']:,.2f} MXN\n"
+        f"💰 Ingreso Neto (Utilidad): ${ultimo['Ingreso Neto / Utilidad (MXN)']:,.2f} MXN\n"
+        f"✍️ Elaboró: {ultimo['Elaboró']} | Recibe: {ultimo['Recibe']}"
+    )
+    
+    encoded_msg = 
