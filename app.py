@@ -156,8 +156,11 @@ if st.session_state.rol == "Contador Auditor":
     st.info("Estimado Víctor, desde este panel tienes acceso al control de reportes por usuario, balance semanal por unidad y descarga de la hoja de Excel consolidada.")
     
     if st.session_state.registros:
-        # Crear DataFrame excluyendo los bytes de la foto para la tabla
-        df_auditoria = pd.DataFrame([{k: v for k, v in reg.items() if k != "foto_bytes"} for reg in st.session_state.registros])
+        registros_limpios = []
+        for reg in st.session_state.registros:
+            reg_sin_bytes = {k: v for k, v in reg.items() if k != "foto_bytes"}
+            registros_limpios.append(reg_sin_bytes)
+        df_auditoria = pd.DataFrame(registros_limpios)
         
         # --- 1. CONTROL DE REPORTES SUBIDOS POR CADA USUARIO ---
         st.markdown("### 👥 Control de Hojas de Reporte Subidas por Usuario")
@@ -199,7 +202,6 @@ if st.session_state.rol == "Contador Auditor":
         st.markdown("### 📊 Tabla Global de Todos los Reportes de la Semana")
         st.dataframe(df_auditoria, use_container_width=True)
         
-        # Opcional: Mostrar fotos guardadas de los reportes
         st.markdown("### 📸 Evidencias Fotográficas Guardadas en los Reportes")
         for idx, reg in enumerate(st.session_state.registros):
             if reg.get("foto_bytes"):
@@ -375,7 +377,6 @@ with st.form("form_reporte_guardar"):
         elif foto_reporte is None:
             st.warning("⚠️ Advertencia: Es necesario adjuntar la fotografía de la hoja de reporte físico.")
         else:
-            # Convertir foto a bytes para que quede guardada permanentemente en el registro
             foto_bytes = foto_reporte.getvalue() if foto_reporte else None
             
             nuevo_registro = {
@@ -409,5 +410,10 @@ with st.form("form_reporte_guardar"):
 if st.session_state.registros:
     st.markdown("---")
     st.markdown("### 📈 Mis Registros Enviados en la Semana")
-    # Mostrar tabla sin la columna de bytes para mantener el reporte limpio
-    df_reportes = pd.DataFrame([{k: v for k, v in reg.items() if k != "foto_bytes"} for reg 
+    registros_limpios = []
+    for reg in st.session_state.registros:
+        reg_sin_bytes = {k: v for k, v in reg.items() if k != "foto_bytes"}
+        registros_limpios.append(reg_sin_bytes)
+    df_reportes = pd.DataFrame(registros_limpios)
+    
+    col
