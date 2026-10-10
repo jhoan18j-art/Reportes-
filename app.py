@@ -66,7 +66,7 @@ SUCURSALES_LISTA = ["-- Selecciona o busca la sucursal --"] + list(PRECIOS_SUCUR
 if "costo_boleto_val" not in st.session_state:
     st.session_state.costo_boleto_val = 40
 
-# Claves homogéneas por defecto en session_state para evitar conflictos de tipos en number_input
+# Claves homogéneas por defecto en session_state para evitar conflictos de tipos
 defaults = {
     "f_ini": 0,
     "f_fin": 0,
@@ -303,7 +303,7 @@ with c_live2:
     folio_final = st.number_input("🔢 Folio Final Utilizado", value=int(st.session_state.f_fin), step=1, key="f_fin")
 with c_live3:
     cancelados = st.number_input("❌ Boletos Cancelados", value=int(st.session_state.f_can), step=1, key="f_can")
-    perdidos = st.number_input("⚠️ Boletos Pérdidos", value=int(st.session_state.f_per], step=1, key="f_per") if False else st.number_input("⚠️ Boletos Pérdidos", value=int(st.session_state.f_per), step=1, key="f_per")
+    perdidos = st.number_input("⚠️ Boletos Pérdidos", value=int(st.session_state.f_per), step=1, key="f_per")
 
 # --- CÁLCULO DE FOLIOS EN TIEMPO REAL ---
 i_last = int(folio_inicial) % 100
@@ -394,4 +394,4 @@ if st.session_state.registros:
     cols_super = [c for c in ["Fecha", "Sitio / Unidad", "Boletos Pagados (A Entregar)", "Ingreso Bruto (MXN)", "Total Gastos y Nóminas (MXN)", "Ingreso Neto / Utilidad (MXN)", "Rentabilidad (%)", "Elaboró", "Recibe"] if c in df_reportes.columns]
     st.dataframe(df_reportes[cols_super], use_container_width=True)
     st.info("ℹ️ Nota: La descarga del archivo consolidado de Excel con el análisis financiero completo está reservada exclusivamente para el contador Víctor.")
-    
+                
