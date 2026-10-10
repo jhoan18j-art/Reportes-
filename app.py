@@ -384,38 +384,38 @@ if foto_reporte is not None:
     if GENAI_AVAILABLE and api_key_env:
         if st.button("🤖 Analizar Foto y Llenar Datos Automáticamente con IA"):
             with st.spinner("Analizando reporte físico y leyendo folios/gastos..."):
+                prompt_text = (
+                    "Analiza esta imagen de reporte de valet parking y devuelve ÚNICAMENTE un objeto JSON válido con este formato exacto:\n"
+                    "{\n"
+                    '  "folio_inicial": 0,\n'
+                    '  "folio_final": 0,\n'
+                    '  "folio_sin_desprender": 0,\n'
+                    '  "cancelados": 0,\n'
+                    '  "perdidos": 0,\n'
+                    '  "gastos_especiales": 0.0,\n'
+                    '  "gastos_generales": 0.0,\n'
+                    '  "elaboro": "",\n'
+                    '  "recibe": ""\n'
+                    "}\n"
+                    "Devuelve números enteros para folios/boletos y flotantes para gastos."
+                )
+                
+                texto_res = None
                 try:
-                    prompt_text = (
-                        "Analiza esta imagen de reporte de valet parking y devuelve ÚNICAMENTE un objeto JSON válido con este formato exacto:\n"
-                        "{\n"
-                        '  "folio_inicial": 0,\n'
-                        '  "folio_final": 0,\n'
-                        '  "folio_sin_desprender": 0,\n'
-                        '  "cancelados": 0,\n'
-                        '  "perdidos": 0,\n'
-                        '  "gastos_especiales": 0.0,\n'
-                        '  "gastos_generales": 0.0,\n'
-                        '  "elaboro": "",\n'
-                        '  "recibe": ""\n'
-                        "}\n"
-                        "Devuelve números enteros para folios/boletos y flotantes para gastos."
+                    # Intento con la librería nueva
+                    client = genai.Client(api_key=api_key_env)
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=[prompt_text, imagen]
                     )
-                    
-                    response = None
+                    texto_res = response.text.strip().replace("```json", "").replace("```", "")
+                except Exception:
                     try:
-                        client = genai.Client(api_key=api_key_env)
-                        response = client.models.generate_content(
-                            model="gemini-2.5-flash",
-                            contents=[prompt_text, imagen]
-                        )
-                    except Exception:
+                        # Fallback con la librería legacy
                         import google.generativeai as genai_legacy
                         genai_legacy.configure(api_key=api_key_env)
                         model_legacy = genai_legacy.GenerativeModel("gemini-1.5-flash")
                         response = model_legacy.generate_content([prompt_text, imagen])
-
-                    texto_res = response.text.strip().replace("```json", "").replace("```", "")
-                    datos_ia = json.loads(texto_res)
-                    
-                    st.session_state.f_ini = int(datos_ia.get("folio_inicial", 0))
-                    st.session_state.f_f
+                        texto_res = response.text.strip().replace("```json", "").replace("```", "")
+                    except Exception as e:
+                        st.error(f"E
