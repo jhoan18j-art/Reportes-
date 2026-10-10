@@ -8,15 +8,19 @@ import json
 import base64
 import urllib.parse
 
-# Archivo permanente de base de datos local
-DB_FILE = "reportes_clubpark.json"
-
-# Soporte opcional para análisis automático de imagen con Gemini Vision
+# Soporte opcional para análisis de imágenes con Gemini
 try:
-    import google.generativeai as genai
+    from google import genai
     GENAI_AVAILABLE = True
 except ImportError:
-    GENAI_AVAILABLE = False
+    try:
+        import google.generativeai as genai
+        GENAI_AVAILABLE = True
+    except ImportError:
+        GENAI_AVAILABLE = False
+
+# Archivo permanente de base de datos local
+DB_FILE = "reportes_clubpark.json"
 
 st.set_page_config(page_title="Club Park - Control Operativo MXN", page_icon="🚗", layout="wide")
 
@@ -381,42 +385,38 @@ if foto_reporte is not None:
         if st.button("🤖 Analizar Foto y Llenar Datos Automáticamente con IA"):
             with st.spinner("Analizando reporte físico y leyendo folios/gastos..."):
                 try:
-                    genai.configure(api_key=api_key_env)
-                    model = genai.GenerativeModel("gemini-1.5-flash")
-                    
-                    prompt = """
-                    Analiza esta imagen de reporte de valet parking y devuelve ÚNICAMENTE un objeto JSON válido con este formato exacto:
-                    {
-                        "folio_inicial": 0,
-                        "folio_final": 0,
-                        "folio_sin_desprender": 0,
-                        "cancelados": 0,
-                        "perdidos": 0,
-                        "gastos_especiales": 0.0,
-                        "gastos_generales": 0.0,
-                        "elaboro": "",
-                        "recibe": ""
-                    }
-                    Devuelve números enteros para folios/boletos y flotantes para gastos.
-                    """
-                    
-                    response = model.generate_content([prompt, imagen])
-                    texto_res = response.text.strip().replace("```json", "").replace("```", "")
-                    datos_ia = json.loads(texto_res)
-                    
-                    st.session_state.f_ini = int(datos_ia.get("folio_inicial", 0))
-                    st.session_state.f_fin = int(datos_ia.get("folio_final", 0))
-                    st.session_state.f_sin = int(datos_ia.get("folio_sin_desprender", 0))
-                    st.session_state.f_can = int(datos_ia.get("cancelados", 0))
-                    st.session_state.f_per = int(datos_ia.get("perdidos", 0))
-                    st.session_state.g_esp = float(datos_ia.get("gastos_especiales", 0.0))
-                    st.session_state.g_gen = float(datos_ia.get("gastos_generales", 0.0))
-                    st.session_state.elaboro_val = str(datos_ia.get("elaboro", ""))
-                    # Soporte opcional para análisis de imágenes con Gemini
-# Soporte opcional para análisis de imágenes con Gemini
-try:
-    import google.generativeai as genai
-    GENAI_AVAILABLE = True
-except ImportError:
-    GENAI_AVAILABLE = False
-                    
+                    # Intenta usar la SDK moderna google-genai
+                    try:
+                        client = genai.Client(api_key=api_key_env)
+                        prompt = """
+                        Analiza esta imagen de reporte de valet parking y devuelve ÚNICAMENTE un objeto JSON válido con este formato exacto:
+                        {
+                            "folio_inicial": 0,
+                            "folio_final": 0,
+                            "folio_sin_desprender": 0,
+                            "cancelados": 0,
+                            "perdidos": 0,
+                            "gastos_especiales": 0.0,
+                            "gastos_generales": 0.0,
+                            "elaboro": "",
+                            "recibe": ""
+                        }
+                        Devuelve números enteros para folios/boletos y flotantes para gastos.
+                        """
+                        response = client.models.generate_content(
+                            model="gemini-2.5-flash",
+                            contents=[prompt, imagen]
+                        )
+                    except Exception:
+                        # Fallback a la SDK legacy
+                        genai.configure(api_key=api_key_env)
+                        model = genai.GenerativeModel("gemini-1.5-flash")
+                        prompt = """
+                        Analiza esta imagen de reporte de valet parking y devuelve ÚNICAMENTE un objeto JSON válido con este formato exacto:
+                        {
+                            "folio_inicial": 0,
+                            "folio_final": 0,
+                            "folio_sin_desprender": 0,
+                            "cancelados": 0,
+                            "perdidos": 0,
+  
