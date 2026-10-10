@@ -310,7 +310,6 @@ dia_semana_actual = date.today().weekday()  # 0 al 4 es de Lunes a Viernes
 if dia_semana_actual < 5:
     st.info("📋 **Control Operativo (Lunes a Viernes):** Meta establecida para supervisores: **15 reportes diarios** requeridos por operación regular.")
     
-    # Alerta y asignación de unidades obligatorias de lunes a viernes según el supervisor logueado
     if st.session_state.usuario_autenticado == "José de Jesús":
         st.warning("🚨 **Unidades obligatorias a reportar hoy (Lunes a Viernes):**\n* **PAMPAS, RAMMA, SUSHITTO, BARRANCA, CARAJILLO, BENINGANS, CLÍNICA**")
     elif st.session_state.usuario_autenticado == "Víctor Manuel":
@@ -419,4 +418,5 @@ r1, r2, r3, r4, r5 = st.columns(5)
 r1.metric("Boletos Pagados", boletos_pagados)
 r2.metric("Ingreso Bruto", f"${ingreso_bruto_live:,.2f} MXN")
 r3.metric("Total Gastos", f"${total_gastos_live:,.2f} MXN")
-r4.me
+r4.metric("Ingreso Neto (Utilidad)", f"${ingreso_neto_live:,.2f} MXN")
+r5.metric("Rentabilidad (%)", f"{
