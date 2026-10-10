@@ -185,9 +185,15 @@ with st.form("form_reporte_completo"):
         cancelados = st.number_input("❌ Boletos Cancelados", value=0, step=1)
         perdidos = st.number_input("⚠️ Boletos Pérdidos", value=0, step=1)
         
-        # Conteo automático de boletos entregados / expedidos
-        total_boletos_entregados = (folio_final - folio_inicial + 1) if folio_final >= folio_inicial else 0
-        st.info(f"📦 Boletos Entregados: **{total_boletos_entregados}**")
+        # --- REGLA DE CÁLCULO DE FOLIOS POR TERMINACIONES (ÚLTIMOS DOS DÍGITOS) ---
+        i_last = int(folio_inicial) % 100
+        f_last = int(folio_final) % 100
+        if f_last >= i_last:
+            total_boletos_entregados = (f_last - i_last) + 1
+        else:
+            total_boletos_entregados = (100 - i_last) + f_last + 1
+            
+        st.info(f"📦 Boletos Entregados (Por terminaciones): **{total_boletos_entregados}**")
 
         gastos_operacion = st.number_input("🛠️ Gastos de Operación ($ MXN)", value=0.0, step=10.0)
 
@@ -205,13 +211,13 @@ with st.form("form_reporte_completo"):
     with c5:
         recibe = st.text_input("👤 Quien Recibe Reporte (Nombre)*", placeholder="Ej. Jesús")
 
-    # --- CÁLCULO ESTRICTO DE BOLETOS A ENTREGAR (PAGADOS) Y MULTIPLICACIÓN ---
+    # --- CÁLCULO FINAL DE BOLETOS PAGADOS Y MULTIPLICACIÓN POR COSTO ---
     boletos_pagados = max(0, total_boletos_entregados - cancelados - perdidos)
     
     total_sueldos_nominas = lider_sueldo + operador1_sueldo + operador2_sueldo
     total_gastos = gastos_operacion + gastos_especiales + gastos_generales + total_sueldos_nominas
     
-    # El resultado de la suma/resta de boletos multiplicado por el costo del boleto da el Ingreso Bruto
+    # Multiplicación exacta de los boletos a entregar por el costo del boleto
     ingreso_bruto = boletos_pagados * costo_boleto
     ingreso_neto = ingreso_bruto - total_gastos
     cantidad_entregar = ingreso_neto
@@ -221,7 +227,7 @@ with st.form("form_reporte_completo"):
     st.markdown("### 📊 Resumen Financiero y Conteo de Boletos (MXN)")
     r1, r2, r3, r4 = st.columns(4)
     r1.metric("Boletos a Entregar (Pagados)", boletos_pagados)
-    r2.metric("Total Entregados (Rango)", total_boletos_entregados)
+    r2.metric("Total Entregados (Folios)", total_boletos_entregados)
     r3.metric("Ingreso Bruto", f"${ingreso_bruto:,.2f} MXN")
     r4.metric("Ingreso Neto (Utilidad)", f"${ingreso_neto:,.2f} MXN", delta=f"${ingreso_neto:,.2f} MXN")
 
