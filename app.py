@@ -252,23 +252,6 @@ if st.session_state.rol == "Contador Auditor":
                     boletos_evt = max(0, (ev_fin - ev_ini) + 1)
                     bruto_evt = boletos_evt * ev_costo
                     neto_evt = bruto_evt - ev_gastos
-                                    prompt_text = (
-                    "Analiza la fotografía del comprobante o reporte de valet parking. "
-                    "Extrae los datos visibles y devuelve únicamente un objeto JSON válido con estos campos: "
-                    '{"folio_inicial": 0, '
-                    '"folio_final": 0, '
-                    '"folio_sin_desprender": 0, '
-                    '"cancelados": 0, '
-                    '"perdidos": 0, '
-                    '"gastos_especiales": 0.0, '
-                    '"gastos_generales": 0.0, '
-                    '"elaboro": "", '
-                    '"recibe": ""}. '
-                    "Si la imagen es un boleto individual (como un ticket con un número de folio), "
-                    "coloca ese número de folio tanto en folio_inicial como en folio_final. "
-                    "No inventes datos de gastos si no están impresos."
-                                    )
-                    
                     
                     reg_evento = {
                         "Fecha": ev_fecha.strftime("%d/%m/%Y"),
@@ -402,8 +385,8 @@ if foto_reporte is not None:
         if st.button("🤖 Analizar Foto y Llenar Datos Automáticamente con IA"):
             with st.spinner("Analizando reporte físico y leyendo folios/gastos..."):
                 prompt_text = (
-                    "Analiza la fotografía del reporte de valet parking. "
-                    "Devuelve únicamente un objeto JSON válido con estos campos: "
+                    "Analiza la fotografía del comprobante o reporte de valet parking. "
+                    "Extrae los datos visibles y devuelve únicamente un objeto JSON válido con estos campos: "
                     '{"folio_inicial": 0, '
                     '"folio_final": 0, '
                     '"folio_sin_desprender": 0, '
@@ -413,8 +396,9 @@ if foto_reporte is not None:
                     '"gastos_generales": 0.0, '
                     '"elaboro": "", '
                     '"recibe": ""}. '
-                    "Usa números enteros para los folios y decimales para gastos. "
-                    "No inventes datos que no sean legibles."
+                    "Si la imagen es un boleto individual (como un ticket con un número de folio, ej: 3554), "
+                    "coloca ese número de folio tanto en folio_inicial como en folio_final. "
+                    "No inventes datos de gastos si no están impresos."
                 )
 
                 texto_res = None
@@ -447,29 +431,4 @@ if foto_reporte is not None:
                             f"Error procesando la imagen con IA: {error_ia}"
                         )
 
-                if texto_res:
-                    try:
-                        texto_res = texto_res.replace(
-                            "```json", ""
-                        ).replace("```", "").strip()
-
-                        data_ia = json.loads(texto_res)
-
-                        st.success("Fotografía analizada correctamente.")
-
-                        st.write("Datos detectados por la IA:")
-                        st.json(data_ia)
-
-                        # Guardar los datos detectados en la sesión.
-                        st.session_state["datos_ia"] = data_ia
-
-                    except (json.JSONDecodeError, TypeError) as error_json:
-                        st.error(
-                            f"La IA no devolvió un JSON válido: {error_json}"
-                        )
-                        st.text_area(
-                            "Respuesta recibida de la IA",
-                            value=texto_res,
-                            height=150
-                        )
-                        
+    
