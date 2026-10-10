@@ -433,19 +433,31 @@ with st.form("form_reporte_guardar"):
 if st.session_state.registros:
     st.markdown("---")
     st.markdown("### 💬 Enviar Notificación del Último Reporte por WhatsApp")
-    ultimo = st.session_state.registros[-1]
     
+st.markdown("### 💬 Enviar Notificación del Último Reporte por WhatsApp")
+
+if st.session_state.registros:
+    ultimo = st.session_state.registros[-1]
+
     mensaje_wht = (
         "REPORTE CLUB PARK\n"
-        f"Fecha: {ultimo['Fecha']}\n"
-        f"Sucursal: {ultimo['Sitio / Unidad']}\n"
-        f"Supervisor: {ultimo['Supervisor']}\n"
-        f"Ingreso Bruto: ${ultimo['Ingreso Bruto (MXN)']:,.2f} MXN\n"
-        f"Gastos Totales: ${ultimo['Total Gastos y Nóminas (MXN)']:,.2f} MXN\n"
-        f"Ingreso Neto: ${ultimo['Ingreso Neto / Utilidad (MXN)']:,.2f} MXN\n"
-        f"Elaboró: {ultimo['Elaboró']} | Recibe: {ultimo['Recibe']}"
+        f"Fecha: {ultimo.get('Fecha', 'No registrada')}\n"
+        f"Sucursal: {ultimo.get('Sitio / Unidad', 'No registrada')}\n"
+        f"Supervisor: {ultimo.get('Supervisor', 'No registrado')}\n"
+        f"Ingreso Bruto: ${float(ultimo.get('Ingreso Bruto (MXN)', 0) or 0):,.2f} MXN\n"
+        f"Gastos Totales: ${float(ultimo.get('Total Gastos y Nóminas (MXN)', 0) or 0):,.2f} MXN\n"
+        f"Ingreso Neto: ${float(ultimo.get('Ingreso Neto / Utilidad (MXN)', 0) or 0):,.2f} MXN\n"
+        f"Elaboró: {ultimo.get('Elaboró', 'No registrado')} | "
+        f"Recibe: {ultimo.get('Recibe', 'No registrado')}"
     )
-    
+
     encoded_msg = urllib.parse.quote(mensaje_wht)
-    whatsa
+    whatsapp_url = f"https://wa.me/?text={encoded_msg}"
+
+    st.success("Notificación preparada.")
+    st.link_button("📲 Abrir WhatsApp para enviar", whatsapp_url)
+
+else:
+    st.info("Todavía no hay reportes registrados para notificar.")
+    
     
