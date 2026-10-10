@@ -178,7 +178,6 @@ if st.session_state.rol == "Contador Auditor":
     st.markdown("## 🔍 Panel de Auditoría, Balance Financiero y Control de Eventos (Contador)")
     st.info("Estimado Víctor, desde este panel tienes acceso al control masivo, balance semanal y facultad especial para registrar reportes de eventos y fines de semana.")
     
-    # Sección especial para que el contador suba reportes de eventos extraordinarios
     with st.expander("🎪 Registrar Reporte de Eventos / Fines de Semana (Facultad del Contador)"):
         st.warning("Como Contador Auditor, puedes dar de alta reportes adicionales de eventos (múltiples por salón/día) en cualquier fecha.")
         with st.form("form_evento_contador"):
@@ -419,4 +418,9 @@ r1.metric("Boletos Pagados", boletos_pagados)
 r2.metric("Ingreso Bruto", f"${ingreso_bruto_live:,.2f} MXN")
 r3.metric("Total Gastos", f"${total_gastos_live:,.2f} MXN")
 r4.metric("Ingreso Neto (Utilidad)", f"${ingreso_neto_live:,.2f} MXN")
-r5.metric("Rentabilidad (%)", f"{
+r5.metric("Rentabilidad (%)", f"{rentabilidad_live:.2f}%")
+
+st.markdown("---")
+
+with st.form("form_reporte_guardar"):
+    
