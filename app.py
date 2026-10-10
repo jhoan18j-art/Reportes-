@@ -6,7 +6,7 @@ import os
 
 st.set_page_config(page_title="Club Park - Control Operativo MXN", page_icon="🚗", layout="wide")
 
-# Estilo CSS para ocultar los botones de más (+) y menos (-) en los inputs numéricos
+# Estilo CSS para ocultar los botones de más (+) y menos (-) en los inputs numéricos y logotipos institucionales
 st.markdown("""
     <style>
         /* Ocultar botones de incremento y decremento en st.number_input */
@@ -220,7 +220,7 @@ st.markdown("---")
 st.markdown("### 📝 2. Captura en Tiempo Real y Validación de Datos")
 st.warning("⚠️ Todos los campos son obligatorios. Las cantidades se calculan al instante en Moneda Nacional Mexicana (MXN).")
 
-# Selección de sucursal fuera del form para actualizar costo al instante
+# Selección de sucursal fuera para actualizar costo al instante
 sitio = st.selectbox("🏢 Sitio / Sucursal*", SUCURSALES_LISTA, key="select_sitio", on_change=actualizar_costo_sucursal)
 
 # Sección interactiva fuera del formulario para mostrar cálculos en vivo
@@ -236,7 +236,7 @@ with c_live3:
     cancelados = st.number_input("❌ Boletos Cancelados", value=0, step=1, key="f_can")
     perdidos = st.number_input("⚠️ Boletos Pérdidos", value=0, step=1, key="f_per")
 
-# --- CÁLCULO EN TIEMPO REAL (Basado en terminaciones / últimos dos dígitos) ---
+# --- CÁLCULO DE FOLIOS EN TIEMPO REAL ---
 i_last = int(folio_inicial) % 100
 f_last = int(folio_final) % 100
 if f_last >= i_last:
@@ -247,43 +247,41 @@ else:
 boletos_pagados = max(0, total_boletos_entregados - cancelados - perdidos)
 ingreso_bruto_live = boletos_pagados * costo_boleto
 
-# Mostrar métricas en vivo inmediatamente en pantalla
-st.info(f"📊 **Cálculo en vivo:** Total Entregados (Folios): **{total_boletos_entregados}** | 🎟️ **Boletos a Entregar (Pagados): {boletos_pagados}** | 💵 **Ingreso Bruto: ${ingreso_bruto_live:,.2f} MXN**")
+st.markdown("---")
+st.markdown("### 🛠️ 3. Captura de Gastos y Nóminas (En Tiempo Real)")
+
+col_g1, col_g2 = st.columns(2)
+with col_g1:
+    folio_sin_desprender = st.number_input("🔖 Folio inicio sin desprender del block", value=0, step=1, key="f_sin")
+    gastos_operacion = st.number_input("🛠️ Gastos de Operación ($ MXN)", value=0.0, step=10.0, key="g_op")
+    lider_sueldo = st.number_input("👔 Líder de Unidad - Sueldo ($ MXN)", value=0.0, step=10.0, key="s_lid")
+    operador1_sueldo = st.number_input("👷 Operador 1 - Sueldo ($ MXN)", value=0.0, step=10.0, key="s_op1")
+with col_g2:
+    operador2_sueldo = st.number_input("👷 Operador 2 - Sueldo ($ MXN)", value=0.0, step=10.0, key="s_op2")
+    gastos_especiales = st.number_input("📌 Gastos Especiales ($ MXN)", value=0.0, step=10.0, key="g_esp")
+    gastos_generales = st.number_input("📋 Gastos Generales ($ MXN)", value=0.0, step=10.0, key="g_gen")
+
+# --- CÁLCULO TOTAL DE GASTOS Y UTILIDAD EN TIEMPO REAL ---
+total_sueldos_nominas = lider_sueldo + operador1_sueldo + operador2_sueldo
+total_gastos_live = gastos_operacion + gastos_especiales + gastos_generales + total_sueldos_nominas
+ingreso_neto_live = ingreso_bruto_live - total_gastos_live
+rentabilidad_live = (ingreso_neto_live / ingreso_bruto_live * 100) if ingreso_bruto_live > 0 else 0.0
+
+st.markdown("### 📊 Resumen Financiero en Vivo (MXN)")
+r1, r2, r3, r4 = st.columns(4)
+r1.metric("Boletos a Entregar", boletos_pagados)
+r2.metric("Total Gastos y Nóminas", f"${total_gastos_live:,.2f} MXN")
+r3.metric("Ingreso Neto (Utilidad)", f"${ingreso_neto_live:,.2f} MXN", delta=f"${ingreso_neto_live:,.2f} MXN")
+r4.metric("Rentabilidad (%)", f"{rentabilidad_live:.2f}%")
 
 st.markdown("---")
 
-with st.form("form_reporte_completo"):
-    col_f1, col_f2 = st.columns(2)
-    with col_f1:
-        folio_sin_desprender = st.number_input("🔖 Folio inicio sin desprender del block", value=0, step=1)
-        gastos_operacion = st.number_input("🛠️ Gastos de Operación ($ MXN)", value=0.0, step=10.0)
-        lider_sueldo = st.number_input("👔 Líder de Unidad - Sueldo ($ MXN)", value=0.0, step=10.0)
-        operador1_sueldo = st.number_input("👷 Operador 1 - Sueldo ($ MXN)", value=0.0, step=10.0)
-    with col_f2:
-        operador2_sueldo = st.number_input("👷 Operador 2 - Sueldo ($ MXN)", value=0.0, step=10.0)
-        gastos_especiales = st.number_input("📌 Gastos Especiales ($ MXN)", value=0.0, step=10.0)
-        gastos_generales = st.number_input("📋 Gastos Generales ($ MXN)", value=0.0, step=10.0)
-
-    st.markdown("---")
+with st.form("form_reporte_guardar"):
     c4, c5 = st.columns(2)
     with c4:
         elaboro = st.text_input("✍️ Elaboró Reporte (Nombre)*", placeholder="Ej. Gaby")
     with c5:
         recibe = st.text_input("👤 Quien Recibe Reporte (Nombre)*", placeholder="Ej. Jesús")
-
-    # Cálculos financieros finales dentro del form
-    total_sueldos_nominas = lider_sueldo + operador1_sueldo + operador2_sueldo
-    total_gastos = gastos_operacion + gastos_especiales + gastos_generales + total_sueldos_nominas
-    ingreso_neto = ingreso_bruto_live - total_gastos
-    cantidad_entregar = ingreso_neto
-    rentabilidad_porcentaje = (ingreso_neto / ingreso_bruto_live * 100) if ingreso_bruto_live > 0 else 0.0
-
-    st.markdown("### 📊 Resumen Financiero Consolidado (MXN)")
-    r1, r2, r3, r4 = st.columns(4)
-    r1.metric("Boletos a Entregar", boletos_pagados)
-    r2.metric("Total Gastos y Nóminas", f"${total_gastos:,.2f} MXN")
-    r3.metric("Ingreso Neto (Utilidad)", f"${ingreso_neto:,.2f} MXN", delta=f"${ingreso_neto:,.2f} MXN")
-    r4.metric("Rentabilidad (%)", f"{rentabilidad_porcentaje:.2f}%")
 
     submitted = st.form_submit_button("💾 Validar y Guardar Registro en el Consolidado")
 
@@ -314,12 +312,12 @@ with st.form("form_reporte_completo"):
                 "Operador 1 Sueldo (MXN)": operador1_sueldo,
                 "Operador 2 Sueldo (MXN)": operador2_sueldo,
                 "Gastos Especiales (MXN)": gastos_especiales,
-                "Total Gastos y Nóminas (MXN)": total_gastos,
+                "Total Gastos y Nóminas (MXN)": total_gastos_live,
                 "Gastos Generales (MXN)": gastos_generales,
                 "Ingreso Bruto (MXN)": ingreso_bruto_live,
-                "Ingreso Neto / Utilidad (MXN)": ingreso_neto,
-                "Rentabilidad (%)": round(rentabilidad_porcentaje, 2),
-                "Cantidad a Entregar (MXN)": cantidad_entregar,
+                "Ingreso Neto / Utilidad (MXN)": ingreso_neto_live,
+                "Rentabilidad (%)": round(rentabilidad_live, 2),
+                "Cantidad a Entregar (MXN)": ingreso_neto_live,
                 "Elaboró": elaboro,
                 "Recibe": recibe,
                 "Evidencia Foto": "Sí"
