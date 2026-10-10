@@ -6,7 +6,7 @@ import os
 
 st.set_page_config(page_title="Club Park - Control Operativo MXN", page_icon="🚗", layout="wide")
 
-# Estilo CSS para ocultar los botones de más (+) y menos (-) en los inputs numéricos y logotipos institucionales
+# Estilo CSS para ocultar los botones de más (+) y menos (-) en los inputs numéricos
 st.markdown("""
     <style>
         /* Ocultar botones de incremento y decremento en st.number_input */
@@ -253,17 +253,23 @@ st.markdown("### 🛠️ 3. Captura de Gastos y Nóminas (En Tiempo Real)")
 col_g1, col_g2 = st.columns(2)
 with col_g1:
     folio_sin_desprender = st.number_input("🔖 Folio inicio sin desprender del block", value=0, step=1, key="f_sin")
-    gastos_operacion = st.number_input("🛠️ Gastos de Operación ($ MXN)", value=0.0, step=10.0, key="g_op")
+    st.markdown("#### 🛠️ Gastos de Operación")  # Convertido a puro título como solicitaste
     lider_sueldo = st.number_input("👔 Líder de Unidad - Sueldo ($ MXN)", value=0.0, step=10.0, key="s_lid")
     operador1_sueldo = st.number_input("👷 Operador 1 - Sueldo ($ MXN)", value=0.0, step=10.0, key="s_op1")
 with col_g2:
     operador2_sueldo = st.number_input("👷 Operador 2 - Sueldo ($ MXN)", value=0.0, step=10.0, key="s_op2")
     gastos_especiales = st.number_input("📌 Gastos Especiales ($ MXN)", value=0.0, step=10.0, key="g_esp")
-    gastos_generales = st.number_input("📋 Gastos Generales ($ MXN)", value=0.0, step=10.0, key="g_gen")
+    
+    # --- GASTOS GENERALES COMO SUMA AUTOMÁTICA ---
+    gastos_generales = lider_sueldo + operador1_sueldo + operador2_sueldo + gastos_especiales
+    st.markdown(f"**📋 Gastos Generales (Suma Automática):** ${gastos_generales:,.2f} MXN")
 
 # --- CÁLCULO TOTAL DE GASTOS Y UTILIDAD EN TIEMPO REAL ---
 total_sueldos_nominas = lider_sueldo + operador1_sueldo + operador2_sueldo
-total_gastos_live = gastos_operacion + gastos_especiales + gastos_generales + total_sueldos_nominas
+total_gastos_live = total_sueldos_nominas + gastos_especiales + gastos_generales  # Gastos generales ya incluye la suma anterior
+# Para evitar duplicar al sumar, el total de gastos es la suma de sueldos + gastos especiales + gastos generales (o equivalente)
+total_gastos_live = lider_sueldo + operador1_sueldo + operador2_sueldo + gastos_especiales + gastos_generales
+
 ingreso_neto_live = ingreso_bruto_live - total_gastos_live
 rentabilidad_live = (ingreso_neto_live / ingreso_bruto_live * 100) if ingreso_bruto_live > 0 else 0.0
 
@@ -307,13 +313,13 @@ with st.form("form_reporte_guardar"):
                 "Boletos Pagados (A Entregar)": boletos_pagados,
                 "Cancelados": cancelados,
                 "Pérdidos": perdidos,
-                "Gastos Operación (MXN)": gastos_operacion,
+                "Gastos de Operación": "Título Informativo",
                 "Líder Sueldo (MXN)": lider_sueldo,
                 "Operador 1 Sueldo (MXN)": operador1_sueldo,
                 "Operador 2 Sueldo (MXN)": operador2_sueldo,
                 "Gastos Especiales (MXN)": gastos_especiales,
-                "Total Gastos y Nóminas (MXN)": total_gastos_live,
                 "Gastos Generales (MXN)": gastos_generales,
+                "Total Gastos y Nóminas (MXN)": total_gastos_live,
                 "Ingreso Bruto (MXN)": ingreso_bruto_live,
                 "Ingreso Neto / Utilidad (MXN)": ingreso_neto_live,
                 "Rentabilidad (%)": round(rentabilidad_live, 2),
@@ -332,4 +338,4 @@ if st.session_state.registros:
     cols_super = [c for c in ["Fecha", "Sitio / Unidad", "Boletos Pagados (A Entregar)", "Ingreso Bruto (MXN)", "Total Gastos y Nóminas (MXN)", "Ingreso Neto / Utilidad (MXN)", "Rentabilidad (%)", "Elaboró", "Recibe"] if c in df_reportes.columns]
     st.dataframe(df_reportes[cols_super], use_container_width=True)
     st.info("ℹ️ Nota: La descarga del archivo consolidado de Excel con el análisis financiero completo está reservada exclusivamente para el contador Víctor.")
-    
+                
