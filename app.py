@@ -70,15 +70,15 @@ if "usuario_autenticado" not in st.session_state:
 
 # Pantalla de Login si no ha iniciado sesión
 if st.session_state.usuario_autenticado is None:
-    st.markdown("<h1 style='text-align: center;'>🚗 CLUB PARK VALET Y ESTACIONAMIENTOS</h1>", unsafe_allow_html=True)
-    st.markdown("<h3 style='text-align: center; color: gray;'>Control de Acceso al Sistema</h3>", unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
+    col_l1, col_l2, col_l3 = st.columns([1, 2, 1])
+    with col_l2:
         if os.path.exists("logo.png"):
-            st.image("logo.png", width=300)
+            st.image("logo.png", width=400)
+        else:
+            st.markdown("<h1 style='text-align: center;'>🚗 CLUB PARK VALET Y ESTACIONAMIENTOS</h1>", unsafe_allow_html=True)
+            
+        st.markdown("<h3 style='text-align: center; color: gray;'>Control de Acceso al Sistema</h3>", unsafe_allow_html=True)
         
-        st.markdown("### Iniciar Sesión")
         nombre_usuario = st.selectbox("Selecciona tu Usuario:", ["-- Selecciona --", "Víctor Manuel", "José de Jesús", "Víctor (Contador)"])
         password = st.text_input("Contraseña de Acceso:", type="password")
         
@@ -101,11 +101,11 @@ if st.session_state.usuario_autenticado is None:
 
 # --- A PARTIR DE AQUÍ EL USUARIO YA ESTÁ LOGUEADO ---
 
-# Cabecera institucional con el Logotipo integrado
+# Cabecera institucional con el Logotipo oficial integrado
 col_logo, col_titulo = st.columns([1, 4])
 with col_logo:
     if os.path.exists("logo.png"):
-        st.image("logo.png", width=220)
+        st.image("logo.png", width=250)
     else:
         st.markdown("### **CP** - Club Park")
 
