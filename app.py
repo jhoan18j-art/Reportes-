@@ -393,6 +393,7 @@ if foto_reporte is not None:
                 
 
                 
+                
                 prompt_text = (
                     "Analiza la fotografía del reporte de valet parking. "
                     "Devuelve únicamente un objeto JSON válido con estos campos: "
@@ -405,35 +406,13 @@ if foto_reporte is not None:
                     '"gastos_generales": 0.0, '
                     '"elaboro": "", '
                     '"recibe": ""}. '
+                    "Usa números enteros para los folios y decimales para gastos. "
                     "No inventes datos que no sean legibles."
-                )
-                
-Usa números para folios y cantidades.
-No inventes datos que no sean legibles.
-                
-
-{
-  "folio_inicial": 0,
-  "folio_final": 0,
-  "folio_sin_desprender": 0,
-  "cancelados": 0,
-  "perdidos": 0,
-  "gastos_especiales": 0.0,
-  "gastos_generales": 0.0,
-  "elaboro": "",
-  "recibe": ""
-}
-
-Devuelve números enteros para folios y boletos,
-y números decimales para gastos.
-No inventes datos que no sean legibles.
-                
                 )
 
                 texto_res = None
 
                 try:
-                    # Intento con la librería nueva
                     from google import genai
 
                     client = genai.Client(api_key=api_key_env)
@@ -443,18 +422,29 @@ No inventes datos que no sean legibles.
                         contents=[prompt_text, imagen]
                     )
 
-                    texto_res = (
-                        response.text.strip()
-                        .replace("```json", "")
-                        .replace("```", "")
-                        .strip()
-                    )
+                    texto_res = (response.text or "").strip()
+                    texto_res = texto_res.replace("```json", "")
+                    texto_res = texto_res.replace("```", "").strip()
 
                 except Exception as error_nuevo:
                     try:
-                        # Intento alternativo con la librería anterior
                         import google.generativeai as genai_legacy
 
                         genai_legacy.configure(api_key=api_key_env)
 
-             
+                        model_legacy = genai_legacy.GenerativeModel(
+                            "gemini-1.5-flash"
+                        )
+
+                        response = model_legacy.generate_content(
+                            [prompt_text, imagen]
+                        )
+
+                        texto_res = (response.text or "").strip()
+                        texto_res = texto_res.replace("```json", "")
+                        texto_res = texto_res.replace("```", "").strip()
+
+                    except Exception as error_legacy:
+                        st.error("No se pudo analizar la fotografía.")
+                        st.caption(f"Error de Gemini: {error_legacy}")
+                        
