@@ -387,13 +387,7 @@ if foto_reporte is not None:
 
     if GENAI_AVAILABLE and api_key_env:
         if st.button("🤖 Analizar Foto y Llenar Datos Automáticamente con IA"):
-
             with st.spinner("Analizando reporte físico y leyendo folios/gastos..."):
-
-                
-
-                
-                
                 prompt_text = (
                     "Analiza la fotografía del reporte de valet parking. "
                     "Devuelve únicamente un objeto JSON válido con estos campos: "
@@ -414,37 +408,20 @@ if foto_reporte is not None:
 
                 try:
                     from google import genai
-
                     client = genai.Client(api_key=api_key_env)
-
                     response = client.models.generate_content(
                         model="gemini-2.5-flash",
                         contents=[prompt_text, imagen]
                     )
-
                     texto_res = (response.text or "").strip()
-                    texto_res = texto_res.replace("```json", "")
-                    texto_res = texto_res.replace("```", "").strip()
+                    texto_res = texto_res.replace("```json", "").replace("```", "").strip()
 
                 except Exception as error_nuevo:
                     try:
                         import google.generativeai as genai_legacy
-
                         genai_legacy.configure(api_key=api_key_env)
-
-                        model_legacy = genai_legacy.GenerativeModel(
-                            "gemini-1.5-flash"
-                        )
-
-                        response = model_legacy.generate_content(
-                            [prompt_text, imagen]
-                        )
-
+                        model_legacy = genai_legacy.GenerativeModel("gemini-1.5-flash")
+                        response = model_legacy.generate_content([prompt_text, imagen])
                         texto_res = (response.text or "").strip()
-                        texto_res = texto_res.replace("```json", "")
-                        texto_res = texto_res.replace("```", "").strip()
-
-                    except Exception as error_legacy:
-                        st.error("No se pudo analizar la fotografía.")
-                        st.caption(f"Error de Gemini: {error_legacy}")
-                        
+                        texto_res = texto_res.replace("```json", "").replace("```", "").strip()
+   
