@@ -98,13 +98,13 @@ if "costo_boleto_val" not in st.session_state:
     st.session_state.costo_boleto_val = 40
 
 defaults = {
-    "f_ini": 
-    "f_fin": 
-    "f_sin": 
-    "f_can": 
-    "f_per": 
-    "g_esp": 
-    "g_gen": 
+    "f_ini": 0,
+    "f_fin": 0,
+    "f_sin": 0,
+    "f_can": 0,
+    "f_per": 0,
+    "g_esp": 0.0,
+    "g_gen": 0.0,
     "elaboro_val": "",
     "recibe_val": ""
 }
