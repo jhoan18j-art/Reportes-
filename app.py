@@ -378,6 +378,8 @@ with st.form("form_reporte_supervisor"):
 
             foto_bytes = foto_reporte.getvalue() if foto_reporte is not None else None
 
+            
+            
             nuevo_registro = {
                 "Fecha": fecha_rep.strftime("%d/%m/%Y"),
                 "Supervisor": supervisor_nombre,
@@ -398,4 +400,14 @@ with st.form("form_reporte_supervisor"):
                 "Ingreso Neto / Utilidad (MXN)": ingreso_neto,
                 "Rentabilidad (%)": rentabilidad,
                 "Cantidad a Entregar (MXN)": ingreso_neto,
-                "Elaboró": elaboro
+                "Elaboró": elaboro,
+            }
+
+            if "reportes" not in st.session_state:
+                st.session_state["reportes"] = []
+
+            st.session_state["reportes"].append(nuevo_registro)
+
+            st.success("Reporte registrado correctamente.")
+            st.json(nuevo_registro)
+            
