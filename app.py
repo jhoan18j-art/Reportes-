@@ -327,7 +327,13 @@ with st.form("form_reporte_supervisor"):
             "Sitio / Unidad",
             SUCURSALES_LISTA,
             key="select_sitio",
-            on_change=actualizar_costo_sucursal
+            
+sucursal_sel = st.selectbox(
+    "Sitio / Unidad",
+    opciones_sucursales,
+    key="sucursal_sel"
+)
+            
         )
     with col_f2:
         costo_boleto = st.number_input(
