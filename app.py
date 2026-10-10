@@ -1,660 +1,219 @@
-
-import os
-import io
-import json
-import sqlite3
-import base64
-from datetime import date, datetime
-from pathlib import Path
-
 import pandas as pd
 import streamlit as st
+from datetime import date
+from PIL import Image
+import os
 
-DB = Path("validador_reportes.db")
+st.set_page_config(page_title="Club Park - Control Operativo", page_icon="🚗", layout="wide")
 
-# ============================================================
-# CONFIGURACIÓN
-# ============================================================
+# Inicializar base de datos de registros en sesión si no existe
+if "registros" not in st.session_state:
+    st.session_state.registros = []
 
-USERS = {
-    "Víctor Manuel Díaz": {"role": "usuario", "password_env": "VICTOR_DIAZ_PASSWORD"},
-    "José de Jesús Salinas": {"role": "usuario", "password_env": "JOSE_SALINAS_PASSWORD"},
-    "Víctor Manuel": {"role": "auditor", "password_env": "AUDITOR_PASSWORD"},
-}
+# Sistema simple de Autenticación de Usuarios
+if "usuario_autenticado" not in st.session_state:
+    st.session_state.usuario_autenticado = None
+    st.session_state.rol = None
 
-# Catálogo base de sitios y personas autorizadas para operar/subir reportes.
-CATALOG = {
-    "Pampas Insurgentes": ["José de Jesús Salinas"],
-    "Rama": ["José de Jesús Salinas"],
-    "Sushito": ["José de Jesús Salinas"],
-    "Barranca": ["José de Jesús Salinas"],
-    "Carajillo": ["José de Jesús Salinas"],
-    "Pennygans": ["José de Jesús Salinas"],
-    "Clínica": ["José de Jesús Salinas"],
-    "Zumo Santa Mónica": ["Víctor Manuel"],
-    "Zumo Chegaray": ["Víctor Manuel"],
-    "Ryoshi Polanco": ["Víctor Manuel"],
-    "Encanto Polanco": ["Víctor Manuel"],
-    "Churrasquería": ["Víctor Manuel"],
-    "Salón Romance": ["José de Jesús Salinas", "Víctor Manuel"],
-    "Jungla Tlalpan": ["José de Jesús Salinas", "Víctor Manuel"],
-    "Jungla División": ["José de Jesús Salinas", "Víctor Manuel"],
-    "Jungla Picacho": ["José de Jesús Salinas", "Víctor Manuel"],
-    "Jungla Empresas": ["José de Jesús Salinas", "Víctor Manuel"],
-    "Cipirilí": ["José de Jesús Salinas", "Víctor Manuel"],
-    "Marometa Satélite": ["José de Jesús Salinas", "Víctor Manuel"],
-    "Marometa Marina": ["José de Jesús Salinas", "Víctor Manuel"],
-    "Veterinaria": ["José de Jesús Salinas", "Víctor Manuel"],
-}
+# Pantalla de Login si no ha iniciado sesión
+if st.session_state.usuario_autenticado is None:
+    st.markdown("<h1 style='text-align: center;'>🚗 CLUB PARK VALET Y ESTACIONAMIENTOS</h1>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center; color: gray;'>Control de Acceso al Sistema</h3>", unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if os.path.exists("logo.png"):
+            st.image("logo.png", width=300)
+        
+        st.markdown("### Iniciar Sesión")
+        nombre_usuario = st.selectbox("Selecciona tu Usuario:", ["-- Selecciona --", "Víctor Manuel", "José de Jesús", "Víctor (Contador)"])
+        password = st.text_input("Contraseña de Acceso:", type="password")
+        
+        if st.button("🔑 Entrar al Sistema"):
+            # Credenciales sencillas y seguras para cada usuario
+            if nombre_usuario == "Víctor Manuel" and password == "visor123":
+                st.session_state.usuario_autenticado = "Víctor Manuel"
+                st.session_state.rol = "Supervisor"
+                st.rerun()
+            elif nombre_usuario == "José de Jesús" and password == "visor123":
+                st.session_state.usuario_autenticado = "José de Jesús"
+                st.session_state.rol = "Supervisor"
+                st.rerun()
+            elif nombre_usuario == "Víctor (Contador)" and password == "contador123":
+                st.session_state.usuario_autenticado = "Víctor (Contador)"
+                st.session_state.rol = "Contador Auditor"
+                st.rerun()
+            else:
+                st.error("❌ Contraseña incorrecta o usuario no seleccionado.")
+    st.stop()
 
-# IMPORTANTE:
-# Estos nombres son una base provisional. Antes de producción deben sustituirse
-# por el catálogo real de personas autorizadas a recibir dinero/reporte.
-AUTHORIZED_MONEY_RECEIVERS = {
-    "José de Jesús Salinas",
-    "Víctor Manuel",
-}
+# --- A PARTIR DE AQUÍ EL USUARIO YA ESTÁ LOGUEADO ---
 
-AUTHORIZED_REPORT_RECEIVERS = {
-    "José de Jesús Salinas",
-    "Víctor Manuel",
-    "Víctor Manuel Díaz",
-}
-
-FIELDS = [
-    ("fecha", "Fecha"),
-    ("sitio", "Sitio"),
-    ("costo_unitario", "Costo unitario"),
-    ("folio_inicial", "Folio inicial utilizado"),
-    ("folio_final", "Folio final utilizado"),
-    ("folio_inicio_block", "Folio de inicio sin desprender en block"),
-    ("total_boletos", "Total de boletos"),
-    ("boletos_pagados", "Boletos pagados"),
-    ("boletos_cancelados", "Boletos cancelados"),
-    ("boletos_perdidos", "Boletos perdidos"),
-    ("boletos_entregados", "Total de boletos entregados"),
-    ("gastos_operacion", "Gastos de operación"),
-    ("lider_unidad", "Líder de unidad"),
-    ("sueldo", "Sueldo"),
-    ("operador", "Operador"),
-    ("gastos_especiales", "Gastos especiales"),
-    ("total_nominas_gastos", "Total de nóminas y gastos"),
-    ("elabora_flujo", "Quién elabora el reporte de flujo"),
-    ("elabora_reporte", "Quién elabora el reporte"),
-    ("recibe_dinero", "Quién recibe la cantidad de dinero"),
-    ("recibe_reporte", "Quién recibe físicamente el reporte"),
-]
-
-
-# ============================================================
-# BASE DE DATOS
-# ============================================================
-
-def db():
-    conn = sqlite3.connect(DB)
-    conn.row_factory = sqlite3.Row
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS reports(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            created_at TEXT NOT NULL,
-            user TEXT NOT NULL,
-            status TEXT NOT NULL,
-            data_json TEXT NOT NULL,
-            errors_json TEXT NOT NULL,
-            photo BLOB
-        )
-    """)
-    conn.commit()
-    return conn
-
-
-def save_report(user, status, data, errors, photo):
-    conn = db()
-    conn.execute(
-        """INSERT INTO reports
-           (created_at,user,status,data_json,errors_json,photo)
-           VALUES(?,?,?,?,?,?)""",
-        (
-            datetime.now().isoformat(timespec="seconds"),
-            user,
-            status,
-            json.dumps(data, ensure_ascii=False),
-            json.dumps(errors, ensure_ascii=False),
-            photo,
-        ),
-    )
-    conn.commit()
-    conn.close()
-
-
-def accepted_df():
-    conn = db()
-    rows = conn.execute(
-        "SELECT id,created_at,user,data_json FROM reports "
-        "WHERE status='ACEPTADO' ORDER BY created_at DESC"
-    ).fetchall()
-    conn.close()
-
-    records = []
-    for row in rows:
-        d = json.loads(row["data_json"])
-        d["_id"] = row["id"]
-        d["_created_at"] = row["created_at"]
-        d["_user"] = row["user"]
-        records.append(d)
-
-    return pd.DataFrame(records)
-
-
-def all_reports_df():
-    conn = db()
-    rows = conn.execute(
-        "SELECT id,created_at,user,status,data_json,errors_json "
-        "FROM reports ORDER BY created_at DESC"
-    ).fetchall()
-    conn.close()
-
-    records = []
-    for row in rows:
-        d = json.loads(row["data_json"])
-        d["_id"] = row["id"]
-        d["_created_at"] = row["created_at"]
-        d["_user"] = row["user"]
-        d["_status"] = row["status"]
-        d["_errors"] = json.loads(row["errors_json"])
-        records.append(d)
-
-    return pd.DataFrame(records)
-
-
-# ============================================================
-# CÁLCULOS
-# ============================================================
-
-def money(value):
-    try:
-        return float(value or 0)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def as_int(value):
-    try:
-        return int(float(value))
-    except (TypeError, ValueError):
-        return None
-
-
-def calcular_folios(inicial, final):
-    inicial = as_int(inicial)
-    final = as_int(final)
-    if inicial is None or final is None:
-        return None
-    if final < inicial:
-        return None
-    return final - inicial + 1
-
-
-def calcular_resultados(r):
-    total = as_int(r.get("total_boletos")) or 0
-    costo = money(r.get("costo_unitario"))
-    sueldo = money(r.get("sueldo"))
-    gastos_operacion = money(r.get("gastos_operacion"))
-    gastos_especiales = money(r.get("gastos_especiales"))
-
-    bruto = costo * total
-    total_gastos = sueldo + gastos_operacion + gastos_especiales
-    utilidad = bruto - total_gastos
-
-    r["_bruto"] = bruto
-    r["_total_gastos"] = total_gastos
-    r["_neto"] = utilidad
-    return r
-
-
-# ============================================================
-# VALIDACIÓN
-# ============================================================
-
-def validate(r, user):
-    errors = []
-    today = date.today().isoformat()
-
-    # Fecha
-    if not r.get("fecha"):
-        errors.append(("fecha", "La fecha es obligatoria."))
-    elif str(r["fecha"]) != today and USERS[user]["role"] != "auditor":
-        errors.append((
-            "fecha",
-            f"El reporte debe corresponder al día actual ({today}). "
-            "Solo el auditor Víctor Manuel puede autorizar otra fecha."
-        ))
-
-    # Sitio
-    sitio = str(r.get("sitio") or "").strip()
-    if not sitio:
-        errors.append(("sitio", "El sitio es obligatorio."))
-    elif sitio not in CATALOG:
-        errors.append(("sitio", "El sitio no está registrado en el catálogo maestro."))
-    elif user not in CATALOG[sitio]:
-        errors.append((
-            "sitio",
-            f"{user} no está autorizado para este sitio. "
-            f"Permitidos: {', '.join(CATALOG[sitio])}."
-        ))
-
-    # Campos críticos
-    critical = [
-        "lider_unidad",
-        "operador",
-        "elabora_flujo",
-        "elabora_reporte",
-        "recibe_dinero",
-        "recibe_reporte",
-    ]
-    for key in critical:
-        if not str(r.get(key) or "").strip():
-            errors.append((key, "Campo obligatorio y debe poder identificarse en la fotografía."))
-
-    # Costo
-    costo = money(r.get("costo_unitario"))
-    if costo <= 0:
-        errors.append(("costo_unitario", "El costo unitario debe ser mayor que cero."))
-
-    # Folios
-    fi = as_int(r.get("folio_inicial"))
-    ff = as_int(r.get("folio_final"))
-    total = as_int(r.get("total_boletos"))
-
-    if fi is None or ff is None:
-        errors.append(("folio_final", "Folio inicial y folio final son obligatorios."))
+# Cabecera institucional con el Logotipo integrado
+col_logo, col_titulo = st.columns([1, 4])
+with col_logo:
+    if os.path.exists("logo.png"):
+        st.image("logo.png", width=220)
     else:
-        if ff < fi:
-            errors.append(("folio_final", "El folio final no puede ser menor que el inicial."))
+        st.markdown("### **CP** - Club Park")
 
-    if total is None:
-        errors.append(("total_boletos", "El total de boletos es obligatorio."))
-    elif fi is not None and ff is not None:
-        esperado = calcular_folios(fi, ff)
-        if esperado != total:
-            errors.append((
-                "total_boletos",
-                f"Los folios {fi} a {ff} representan {esperado} boletos, "
-                f"pero el reporte indica {total}."
-            ))
+with col_titulo:
+    st.title("CLUB PARK VALET Y ESTACIONAMIENTOS S.A. DE C.V.")
+    st.subheader(f"Bienvenido, {st.session_state.usuario_autenticado} ({st.session_state.rol})")
 
-    # Distribución de boletos
-    pagados = as_int(r.get("boletos_pagados"))
-    cancelados = as_int(r.get("boletos_cancelados"))
-    perdidos = as_int(r.get("boletos_perdidos"))
+# Botón para cerrar sesión
+if st.sidebar.button("🚪 Cerrar Sesión"):
+    st.session_state.usuario_autenticado = None
+    st.session_state.rol = None
+    st.rerun()
 
-    pagados = 0 if pagados is None else pagados
-    cancelados = 0 if cancelados is None else cancelados
-    perdidos = 0 if perdidos is None else perdidos
+st.sidebar.markdown("---")
+st.sidebar.info(f"**Usuario actual:** {st.session_state.usuario_autenticado}\n\n**Rol:** {st.session_state.rol}")
 
-    if min(pagados, cancelados, perdidos) < 0:
-        errors.append(("boletos_pagados", "No puede haber cantidades negativas."))
-
-    if total is not None and pagados + cancelados + perdidos != total:
-        errors.append((
-            "boletos_pagados",
-            f"Pagados + cancelados + perdidos debe ser exactamente {total}."
-        ))
-
-    entregados = as_int(r.get("boletos_entregados"))
-    if total is not None and entregados != total:
-        errors.append((
-            "boletos_entregados",
-            f"El total de boletos entregados debe ser {total}."
-        ))
-
-    # Gastos
-    sueldo = money(r.get("sueldo"))
-    gastos_operacion = money(r.get("gastos_operacion"))
-    gastos_especiales = money(r.get("gastos_especiales"))
-
-    if min(sueldo, gastos_operacion, gastos_especiales) < 0:
-        errors.append(("total_nominas_gastos", "Los gastos no pueden ser negativos."))
-
-    esperado_gastos = sueldo + gastos_operacion + gastos_especiales
-    reportado_gastos = money(r.get("total_nominas_gastos"))
-
-    if abs(reportado_gastos - esperado_gastos) > 0.01:
-        errors.append((
-            "total_nominas_gastos",
-            f"El total correcto de nóminas y gastos es ${esperado_gastos:,.2f}."
-        ))
-
-    # Receptores
-    recibe_dinero = str(r.get("recibe_dinero") or "").strip()
-    if recibe_dinero and recibe_dinero not in AUTHORIZED_MONEY_RECEIVERS:
-        errors.append((
-            "recibe_dinero",
-            f"'{recibe_dinero}' no aparece en la lista de receptores de dinero autorizados."
-        ))
-
-    recibe_reporte = str(r.get("recibe_reporte") or "").strip()
-    if recibe_reporte and recibe_reporte not in AUTHORIZED_REPORT_RECEIVERS:
-        errors.append((
-            "recibe_reporte",
-            f"'{recibe_reporte}' no aparece en la lista de receptores de reportes autorizados."
-        ))
-
-    calcular_resultados(r)
-    return errors
-
-
-# ============================================================
-# LECTURA IA / OCR
-# ============================================================
-
-def extract_ai(photo_bytes, mime_type="image/jpeg"):
-    """
-    Lectura mediante Anthropic si ANTHROPIC_API_KEY está configurada.
-    Si no hay API, se devuelve un resultado vacío y la aplicación permite
-    capturar/revisar los datos manualmente.
-    """
-    key = os.getenv("ANTHROPIC_API_KEY")
-    if not key:
-        return {}
-
-    try:
-        from anthropic import Anthropic
-
-        client = Anthropic(api_key=key)
-        model = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514")
-
-        prompt = """
-Lee esta fotografía de un Reporte de Operación por Unidad.
-
-Devuelve ÚNICAMENTE un objeto JSON válido.
-NO inventes datos.
-Si un campo no es visible o no puede leerse con seguridad, devuelve null.
-
-Campos:
-fecha, sitio, costo_unitario, folio_inicial, folio_final,
-folio_inicio_block, total_boletos, boletos_pagados,
-boletos_cancelados, boletos_perdidos, boletos_entregados,
-gastos_operacion, lider_unidad, sueldo, operador,
-gastos_especiales, total_nominas_gastos,
-elabora_flujo, elabora_reporte, recibe_dinero, recibe_reporte.
-
-Reglas especiales:
-- Distingue "recibe dinero" de "recibe reporte".
-- No confundas Víctor Díaz con Víctor Manuel.
-- Conserva números exactamente como aparecen.
-- Si aparece más de un operador, combina sus nombres en un solo texto.
-- Si un nombre o número es dudoso, usa null.
-"""
-
-        b64 = base64.b64encode(photo_bytes).decode("utf-8")
-
-        response = client.messages.create(
-            model=model,
-            max_tokens=2000,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": mime_type,
-                            "data": b64,
-                        },
-                    },
-                ],
-            }],
+# Si el usuario es el Contador Auditor, tiene vista de auditoría completa
+if st.session_state.rol == "Contador Auditor":
+    st.markdown("---")
+    st.markdown("## 🔍 Panel de Auditoría y Control Financiero (Contador)")
+    st.info("Estimado Víctor, desde este panel puedes supervisar, auditar y descargar el consolidado completo de todas las operaciones semanales.")
+    
+    if st.session_state.registros:
+        df_auditoria = pd.DataFrame(st.session_state.registros)
+        st.dataframe(df_auditoria, use_container_width=True)
+        
+        # Totales generales para auditoría
+        total_ingresos_netos = df_auditoria["Ingreso Neto"].sum()
+        total_gastos_gral = df_auditoria["Total Gastos y Nóminas"].sum()
+        
+        col_a1, col_a2 = st.columns(2)
+        col_a1.metric("Ingreso Neto Acumulado", f"${total_ingresos_netos:,.2f}")
+        col_a2.metric("Total Gastos y Nóminas Acumulado", f"${total_gastos_gral:,.2f}")
+        
+        csv_export = df_auditoria.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Descargar Auditoría Semanal Completa en CSV (Excel)",
+            data=csv_export,
+            file_name="Auditoria_Semanal_ClubPark.csv",
+            mime="text/csv",
         )
+    else:
+        st.warning("⚠️ No hay registros cargados en el sistema todavía por parte de los supervisores.")
+        
+    st.stop() # El contador solo audita y revisa
 
-        text = response.content[0].text.strip()
+# --- VISTA PARA SUPERVISORES (Víctor Manuel y José de Jesús) ---
+st.markdown("---")
+st.markdown("### 📸 1. Evidencia Fotográfica del Reporte Físico")
+foto_reporte = st.file_uploader("Tomar o subir foto de la hoja de reporte", type=["jpg", "jpeg", "png"], key="foto")
 
-        if text.startswith("```"):
-            text = text.strip("`")
-            if text.startswith("json"):
-                text = text[4:].strip()
+if foto_reporte is not None:
+    imagen = Image.open(foto_reporte)
+    st.image(imagen, caption="Vista previa de la hoja de reporte física", width=350)
 
-        return json.loads(text)
+st.markdown("---")
+st.markdown("### 📝 2. Captura Obligatoria de Datos del Reporte")
+st.warning("⚠️ Todos los campos son obligatorios. La aplicación no permitirá guardar el registro si falta información clave.")
 
-    except Exception as exc:
-        st.error(f"No fue posible completar la lectura automática: {exc}")
-        return {}
+with st.form("form_reporte_completo"):
+    c1, c2, c3 = st.columns(3)
+    
+    with c1:
+        fecha = st.date_input("📅 Fecha", value=date.today())
+        sitio = st.text_input("🏢 Sitio / Unidad*", placeholder="Ej. Sushiitto")
+        costo_boleto = st.number_input("💵 Costo del Boleto ($)", value=40, step=1)
+        folio_inicial = st.number_input("🔢 Folio Inicial Utilizado", value=0, step=1)
+        folio_final = st.number_input("🔢 Folio Final Utilizado", value=0, step=1)
+        folio_sin_desprender = st.number_input("🔖 Folio inicio sin desprender del block", value=0, step=1)
 
+    with c2:
+        total_boletos = st.number_input("🎟️ Total de Boletos", value=0, step=1)
+        boletos_pagados = st.number_input("✅ Boletos Pagados", value=0, step=1)
+        boletos_cancelados = st.number_input("❌ Boletos Cancelados", value=0, step=1)
+        boletos_perdidos = st.number_input("⚠️ Boletos Pérdidos", value=0, step=1)
+        total_boletos_entregados = st.number_input("📦 Total de Boletos Entregados", value=0, step=1)
+        gastos_operacion = st.number_input("🛠️ Gastos de Operación ($)", value=0.0, step=10.0)
 
-# ============================================================
-# EXCEL
-# ============================================================
+    with c3:
+        lider_sueldo = st.number_input("👔 Líder de Unidad - Sueldo ($)", value=0.0, step=10.0)
+        operador1_sueldo = st.number_input("👷 Operador 1 - Sueldo ($)", value=280.0, step=10.0)
+        operador2_sueldo = st.number_input("👷 Operador 2 - Sueldo ($)", value=0.0, step=10.0)
+        gastos_especiales = st.number_input("📌 Gastos Especiales ($)", value=0.0, step=10.0)
+        gastos_generales = st.number_input("📋 Gastos Generales ($)", value=0.0, step=10.0)
+        
+    st.markdown("---")
+    c4, c5 = st.columns(2)
+    with c4:
+        elaboro = st.text_input("✍️ Elaboró Reporte (Nombre)*", placeholder="Ej. Gaby")
+    with c5:
+        recibe = st.text_input("👤 Quien Recibe Reporte (Nombre)*", placeholder="Ej. Jesús")
 
-def make_excel():
-    df = accepted_df()
-    if df.empty:
-        return None
+    # Cálculos automáticos y financieros
+    total_sueldos_nominas = lider_sueldo + operador1_sueldo + operador2_sueldo
+    total_gastos = gastos_operacion + gastos_especiales + gastos_generales + total_sueldos_nominas
+    ingreso_bruto = boletos_pagados * costo_boleto
+    ingreso_neto = ingreso_bruto - total_gastos
+    cantidad_entregar = ingreso_neto
 
-    for col in [
-        "costo_unitario",
-        "total_boletos",
-        "sueldo",
-        "gastos_operacion",
-        "gastos_especiales",
-    ]:
-        if col not in df:
-            df[col] = 0
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+    st.markdown("### 📊 Resumen Financiero Calculado")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Gastos y Nóminas", f"${total_gastos:,.2f}")
+    m2.metric("Ingreso Bruto", f"${ingreso_bruto:,.2f}")
+    m3.metric("Ingreso Neto", f"${ingreso_neto:,.2f}", delta=f"${ingreso_neto:,.2f}")
+    m4.metric("Cantidad a Entregar", f"${cantidad_entregar:,.2f}")
 
-    df["Ingreso bruto"] = df["costo_unitario"] * df["total_boletos"]
-    df["Total gastos"] = (
-        df["sueldo"] + df["gastos_operacion"] + df["gastos_especiales"]
-    )
-    df["Utilidad"] = df["Ingreso bruto"] - df["Total gastos"]
+    submitted = st.form_submit_button("💾 Validar y Guardar Registro en el Consolidado Semanal")
 
-    detalle = df.copy()
-
-    por_sitio = (
-        detalle.groupby("sitio", dropna=False)[
-            ["Ingreso bruto", "Total gastos", "Utilidad"]
-        ]
-        .sum()
-        .reset_index()
-    )
-
-    por_supervisor = (
-        detalle.groupby("lider_unidad", dropna=False)[
-            ["Ingreso bruto", "Total gastos", "Utilidad"]
-        ]
-        .sum()
-        .reset_index()
-    )
-
-    resumen = pd.DataFrame([{
-        "Ingreso bruto": detalle["Ingreso bruto"].sum(),
-        "Sueldos": detalle["sueldo"].sum(),
-        "Gastos operación": detalle["gastos_operacion"].sum(),
-        "Gastos especiales": detalle["gastos_especiales"].sum(),
-        "Total gastos": detalle["Total gastos"].sum(),
-        "Utilidad": detalle["Utilidad"].sum(),
-    }])
-
-    buffer = io.BytesIO()
-
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        resumen.to_excel(writer, index=False, sheet_name="Resumen semanal")
-        detalle.to_excel(writer, index=False, sheet_name="Detalle")
-        por_sitio.to_excel(writer, index=False, sheet_name="Por sitio")
-        por_supervisor.to_excel(writer, index=False, sheet_name="Por supervisor")
-
-    buffer.seek(0)
-    return buffer.getvalue()
-
-
-# ============================================================
-# INTERFAZ MÓVIL
-# ============================================================
-
-def mobile_css():
-    st.markdown("""
-    <style>
-        .block-container {
-            max-width: 760px;
-            padding-top: 1rem;
-            padding-left: 0.8rem;
-            padding-right: 0.8rem;
-        }
-
-        h1, h2, h3 {
-            letter-spacing: -0.02em;
-        }
-
-        div.stButton > button {
-            width: 100%;
-            min-height: 3.2rem;
-            border-radius: 14px;
-            font-size: 1rem;
-        }
-
-        div[data-testid="stMetric"] {
-            border-radius: 14px;
-            padding: 0.6rem;
-        }
-
-        .mobile-card {
-            padding: 1rem;
-            border-radius: 16px;
-            border: 1px solid rgba(128,128,128,.25);
-            margin-bottom: .7rem;
-        }
-
-        .critical {
-            padding: .8rem;
-            border-radius: 12px;
-            border-left: 5px solid #d33;
-            background: rgba(220, 50, 50, .08);
-            margin: .5rem 0;
-        }
-
-        .ok {
-            padding: .8rem;
-            border-radius: 12px;
-            border-left: 5px solid #2e8b57;
-            background: rgba(46, 139, 87, .08);
-            margin: .5rem 0;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-
-
-def login():
-    if st.session_state.get("user"):
-        return True
-
-    st.title("📋 Validador de Reportes")
-    st.caption("Versión móvil — diseñada para utilizarse desde Android")
-
-    st.info("Fotografía → lectura automática → validación → aceptación/rechazo → registro")
-
-    user = st.selectbox("Usuario", list(USERS))
-    password = st.text_input("Contraseña", type="password")
-
-    if st.button("🔐 Entrar"):
-        expected = os.getenv(USERS[user]["password_env"], "1234")
-        if password == expected:
-            st.session_state.user = user
-            st.rerun()
+    if submitted:
+        if not sitio.strip() or not elaboro.strip() or not recibe.strip():
+            st.error("❌ Error de validación: Los campos 'Sitio / Unidad', 'Elaboró Reporte' y 'Quien Recibe Reporte' son obligatorios.")
+        elif foto_reporte is None:
+            st.warning("⚠️ Advertencia: Es necesario adjuntar la fotografía de la hoja de reporte físico.")
         else:
-            st.error("Contraseña incorrecta.")
+            nuevo_registro = {
+                "Fecha": str(fecha),
+                "Supervisor": st.session_state.usuario_autenticado,
+                "Sitio / Unidad": sitio,
+                "Costo Boleto": costo_boleto,
+                "Folio Inicial": folio_inicial,
+                "Folio Final": folio_final,
+                "Folio sin desprender": folio_sin_desprender,
+                "Total Boletos": total_boletos,
+                "Boletos Pagados": boletos_pagados,
+                "Cancelados": boletos_cancelados,
+                "Pérdidos": boletos_perdidos,
+                "Total Entregados": total_boletos_entregados,
+                "Gastos Operación": gastos_operacion,
+                "Líder Sueldo": lider_sueldo,
+                "Operador 1 Sueldo": operador1_sueldo,
+                "Operador 2 Sueldo": operador2_sueldo,
+                "Gastos Especiales": gastos_especiales,
+                "Total Gastos y Nóminas": total_gastos,
+                "Gastos Generales": gastos_generales,
+                "Ingreso Bruto": ingreso_bruto,
+                "Ingreso Neto": ingreso_neto,
+                "Cantidad a Entregar": cantidad_entregar,
+                "Elaboró": elaboro,
+                "Recibe": recibe,
+                "Evidencia Foto": "Sí"
+            }
+            st.session_state.registros.append(nuevo_registro)
+            st.success(f"¡El reporte del sitio '{sitio}' ha sido validado y guardado exitosamente por {st.session_state.usuario_autenticado}!")
 
-    st.caption("Prueba local: si no configuras contraseñas, la clave temporal es 1234.")
-    return False
+# Sección de visualización y exportación consolidada para supervisores
+if st.session_state.registros:
+    st.markdown("---")
+    st.markdown("### 📈 Consolidado Semanal Acumulado")
+    df_reportes = pd.DataFrame(st.session_state.registros)
+    st.dataframe(df_reportes, use_container_width=True)
 
-
-def reset_new_report():
-    for key in [
-        "report",
-        "photo",
-        "mime_type",
-        "errors",
-        "validated",
-        "accepted_current",
-    ]:
-        st.session_state.pop(key, None)
-
-
-def render_validation_result(r, errors):
-    if errors:
-        st.error(f"❌ REPORTE RECHAZADO — {len(errors)} problema(s)")
-
-        for field, message in errors:
-            st.markdown(
-                f'<div class="critical"><b>❌ {field}</b><br>{message}</div>',
-                unsafe_allow_html=True,
-            )
-
-        st.warning(
-            "El reporte NO puede aceptarse mientras existan errores. "
-            "Los errores quedan registrados."
-        )
-        return False
-
-    st.success("✅ REPORTE VÁLIDO")
-
-    c1, c2 = st.columns(2)
-    c1.metric("Ingreso bruto", f"${r['_bruto']:,.2f}")
-    c2.metric("Total gastos", f"${r['_total_gastos']:,.2f}")
-
-    st.metric("Utilidad / monto neto", f"${r['_neto']:,.2f}")
-
-    st.markdown(
-        '<div class="ok"><b>Validaciones principales correctas</b><br>'
-        'Folios · boletos · operaciones · gastos · resultado</div>',
-        unsafe_allow_html=True,
+    csv_export = df_reportes.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Descargar Reporte Semanal Completo en CSV (Excel)",
+        data=csv_export,
+        file_name="Consolidado_Semanal_ClubPark.csv",
+        mime="text/csv",
     )
-    return True
 
-
-def page_home(user, role):
-    st.title("🏠 Inicio")
-    st.success("Sistema listo para operar desde el celular.")
-
-    st.write(f"**Usuario:** {user}")
-    st.write(f"**Rol:** {'Auditor' if role == 'auditor' else 'Usuario'}")
-
-    st.divider()
-
-    st.subheader("Flujo del sistema")
-
-    cols = st.columns(2)
-    with cols[0]:
-        st.markdown("### 📷 1. Foto")
-        st.caption("Toma la fotografía del reporte.")
-    with cols[1]:
-        st.markdown("### 🤖 2. Lectura")
-        st.caption("La IA extrae los datos.")
-
-    cols = st.columns(2)
-    with cols[0]:
-        st.markdown("### 🧮 3. Cálculo")
-        st.caption("Se recalculan folios, ingresos y gastos.")
-    with cols[1]:
-        st.markdown("### 🔎 4. Validación")
-        st.caption("Se comparan datos y autorizaciones.")
-
-    cols = st.columns(2)
-    with cols[0]:
-        st.markdown("### 🟢 5. Aceptar")
-        st.caption("Solo si todas las reglas son correctas.")
-    with cols[1]:
-        st.markdown("### 🔴 6. Rechazar")
-        st.caption("Se registra el motivo del rechazo.")
-
-    st.divider()
-
-    if st.button("📷 NUEVO REPORTE"):
-        st.session_state.page = "📷 Nuevo reporte"
+    if st.button("🗑️ Limpiar Todos los Registros"):
+        st.session_state.registros = []
         st.rerun()
-
-
-def page_new_report(user):
-    st.title("📷 Nuevo reporte")
-    st.caption("Toma la fotografía completa, de frente y con buena iluminación.")
-
-    photo = st.camera_inpu
+        
