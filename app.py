@@ -423,4 +423,9 @@ r5.metric("Rentabilidad (%)", f"{rentabilidad_live:.2f}%")
 st.markdown("---")
 
 with st.form("form_reporte_guardar"):
+    st.text_input("Nombre")
+    guardar = st.form_submit_button("Guardar reporte")
+
+    if guardar:
+        st.success("Formulario enviado")
     
