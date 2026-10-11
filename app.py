@@ -447,20 +447,49 @@ with col_m3:
 with col_m4:
     st.metric("Rentabilidad", rentabilidad_calc)
 
+
 # Control de duplicados y botón de guardado
 existe_duplicado = ya_existe_reporte(sucursal, fecha_op_str)
 
 st.markdown("---")
 
 if existe_duplicado and not es_contador:
-    st.error(f"🚫 **REPORTE YA EXISTE:** La sucursal **{sucursal}** ya cuenta con un reporte registrado para el día **{fecha_op_str}**.")
-    st.warning("⚠️ Como supervisor, solo puedes subir un reporte por sucursal al día. Si hubo un error o requieres subir un reporte extemporáneo, solicita el apoyo del Contador Auditor.")
+    st.error(
+        f"🚫 REPORTE YA EXISTE: La sucursal {sucursal} "
+        f"ya cuenta con un reporte registrado para el día {fecha_op_str}."
+    )
+    st.warning(
+        "Como supervisor, solo puedes subir un reporte por sucursal al día. "
+        "Solicita apoyo al Contador Auditor si necesitas corregirlo."
+    )
+
 else:
     if existe_duplicado and es_contador:
-        st.warning(f"⚠️ **Atención:** Ya existe un reporte de **{sucursal}** para la fecha **{fecha_op_str}**. Como Contador Auditor, puedes forzar el guardado.")
+        st.warning(
+            f"⚠️ Ya existe un reporte de {sucursal} "
+            f"para la fecha {fecha_op_str}. "
+            "Como Contador Auditor, puedes continuar."
+        )
 
-    if st.button("💾 Guardar y Confirmar Reporte Diario", type="primary", use_container_width=True):
-        if sucursal != "-- Selecciona o busca la sucursal --":
+    if st.button(
+        "💾 Guardar y Confirmar Reporte Diario",
+        type="primary",
+        use_container_width=True
+    ):
+        if sucursal == "-- Selecciona o busca la sucursal --":
+            st.error("Debes seleccionar una sucursal.")
+        else:
             ruta_guardada = None
+
             if foto:
-                ruta_guardada = guardar_imagen_op
+                try:
+                    ruta_guardada = guardar_imagen_op(foto)
+                except Exception as e:
+                    st.error(f"No se pudo guardar la fotografía: {e}")
+                    st.stop()
+
+            st.info(
+                "Fotografía procesada. "
+                "Continúa con la lógica de registro del reporte."
+            )
+            
