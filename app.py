@@ -438,26 +438,73 @@ if st.session_state.usuario_autenticado is None:
         pass_visor = st.secrets.get("PASS_SUPERVISOR", "visor123") if hasattr(st, "secrets") else "visor123"
         pass_auditor = st.secrets.get("PASS_AUDITOR", "contador123") if hasattr(st, "secrets") else "contador123"
 
-        
-if st.button("🔑 Iniciar Sesión", use_container_width=True, type="primary"):
-    if (
-        nombre_usuario in ["Víctor Manuel", "José de Jesús"]
-        and password == pass_visor
-    ):
-        st.session_state.usuario_autenticado = nombre_usuario
-        st.session_state.rol = "Supervisor"
-        st.success(f"Bienvenido {nombre_usuario}")
-        st.rerun()
+        if st.button("🔑 Iniciar Sesión", use_container_width=True, type="primary"):
+            if nombre_usuario in ["Víctor Manuel", "José de Jesús"] and password == pass_visor:
+                st.session_state.usuario_autenticado = nombre_usuario
+                st.session_state.rol = "Supervisor"
+                st.success(f"Bienvenido {nombre_usuario}")
+                st.rerun()
+            elif nombre_usuario == "Víctor (Contador)" and password == pass_auditor:
+                st.session_state.usuario_autenticado = "Víct
+                with col_m4:
+    st.metric("Rentabilidad", rentabilidad_calc)
 
-    elif (
-        nombre_usuario == "Víctor (Contador)"
-        and password == pass_auditor
-    ):
-        st.session_state.usuario_autenticado = "Víctor (Contador)"
-        st.session_state.rol = "Auditor"
-        st.success("Bienvenido, auditor")
-        st.rerun()
+duplicado = ya_existe_reporte(sucursal, fecha_op_str)
+puede_guardar = True
 
+st.markdown("---")
+
+if duplicado and not es_contador:
+    st.error(f"🚫 **REPORTE YA EXISTE:** La sucursal **{sucursal}** ya cuenta con un reporte para la fecha **{fecha_op_str}**.")
+    st.warning("⚠️ Como supervisor, no puedes duplicar reportes para la misma sucursal en el mismo día. Si necesitas corregirlo, solicita apoyo al Contador Auditor.")
+    puede_guardar = False
+elif duplicado and es_contador:
+    st.warning(f"⚠️ **Atención:** Ya existe un reporte de **{sucursal}** para la fecha **{fecha_op_str}**. Como Contador Auditor, puedes registrar este turno o reporte adicional.")
+
+# BOTÓN DE GUARDADO PRINCIPAL
+if st.button("💾 Guardar y Confirmar Reporte Diario", type="primary", use_container_width=True, disabled=not puede_guardar):
+    if sucursal == "-- Selecciona o busca la sucursal --":
+        st.error("❌ Debes seleccionar una sucursal válida antes de guardar.")
     else:
-        st.error("Usuario o contraseña incorrectos.")
+        id_nuevo = f"REP_{uuid.uuid4().hex[:8]}"
+        ruta_foto_guardada = None
         
+        if foto_subida is not None:
+            ruta_foto_guardada = guardar_imagen_optimizada(foto_subida, id_nuevo, sucursal, fecha_op_str)
+
+        nuevo_reporte = {
+            "ID": id_nuevo,
+            "Fecha": fecha_op_str,
+            "Sitio / Unidad": sucursal,
+            "Horario": f"{hora_ini.strftime('%H:%M')} a {hora_fin.strftime('%H:%M')}",
+            "Costo Boleto": 0.0 if es_ingreso_directo else float(costo_boleto),
+            "Folio Inicial": 0 if es_ingreso_directo else int(f_ini),
+            "Folio Final": 0 if es_ingreso_directo else int(f_fin),
+            "Total Boletos": total_boletos_calc,
+            "Sin Cobro": 0 if es_ingreso_directo else int(f_sin),
+            "Cancelados": 0 if es_ingreso_directo else int(f_can),
+            "Perdidos": 0 if es_ingreso_directo else int(f_per),
+            "Boletos Cobrados": boletos_cobrados_calc,
+            "Ingreso Bruto": ingreso_bruto_calc,
+            "Gastos Especiales": float(g_esp),
+            "Gastos Generales / Nómina": float(g_gen),
+            "Total Gastos": total_gastos_calc,
+            "Ingreso Neto": ingreso_neto_calc,
+            "Margen (%)": round(margen_calc, 2),
+            "Rentabilidad": rentabilidad_calc,
+            "Elaboró": elaboro if elaboro else st.session_state.usuario_autenticado,
+            "Recibe": recibe,
+            "Tipo": "Operación Regular",
+            "foto_path": ruta_foto_guardada,
+            "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+        st.session_state.registros.append(nuevo_reporte)
+        guardado_exitoso = guardar_registros_permanentes(st.session_state.registros)
+
+        if guardado_exitoso:
+            st.success(f"✅ Reporte guardado exitosamente con ID: `{id_nuevo}`")
+            st.balloons()
+            st.rerun()
+        else:
+            st.error("❌ Ocurrió un error al guardar el reporte en el disco permanente.")
