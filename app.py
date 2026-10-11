@@ -450,4 +450,4 @@ if st.button("💾 Guardar y Confirmar Reporte", type="primary", disabled=not pu
             "Horario": horario_str,
             "Costo Boleto": float(costo_boleto),
             "Folio Inicial": float(f_ini) if es_ingreso_directo else int(f_ini),
-            "Folio Final": 0 if es_ingreso_directo else int(f_f
+            "Folio Final": 0 if es_ingreso_directo else int(f_f),
