@@ -444,10 +444,17 @@ if st.button("💾 Guardar y Confirmar Reporte", type="primary", disabled=not pu
 
         horario_str = f"{hora_ini.strftime('%H:%M')} a {hora_fin.strftime('%H:%M')}"
 
-        nuevo_reporte = {
-            "Fecha": fecha_op_str,
-            "Sitio / Unidad": sucursal,
-            "Horario": horario_str,
-            "Costo Boleto": float(costo_boleto),
-            "Folio Inicial": float(f_ini) if es_ingreso_directo else int(f_ini),
-            "Folio Final": 0 if es_ingreso_directo else int(f_f),
+        
+nuevo_reporte = {
+    "Fecha": fecha_op_str,
+    "Sitio / Unidad": sucursal,
+    "Horario": horario_str,
+    "Costo Boleto": float(costo_boleto),
+    "Folio Inicial": (
+        float(f_ini) if es_ingreso_directo else int(f_ini)
+    ),
+    "Folio Final": (
+        0 if es_ingreso_directo else int(f_f)
+    ),
+}
+
