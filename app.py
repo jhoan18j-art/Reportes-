@@ -372,7 +372,7 @@ with st.form("form_reporte_supervisor"):
         f_per = st.number_input("Boletos Perdidos", step=1, key="f_per_val")
 
     st.caption("Boletos = (Folio Final − Folio Inicial) + 1 − sin desprender − cancelados − perdidos. "
-               "Ingreso = Boletos × Costo. Neto = Ingreso − Gastos de operación. El cálculo se muestra al guardar.")
+               "Ingreso = Boletos × Costo. Neto = Ingreso − Gastos de operación. El cálculo se muestra en la parte inferior derecha.")
 
     st.markdown("#### 💸 Gastos de Operación")
     col_g1, col_g2 = st.columns(2)
