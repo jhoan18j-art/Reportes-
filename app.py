@@ -206,60 +206,78 @@ if st.session_state.rol == "Contador Auditor":
     st.markdown("---")
 
     with st.expander("🎪 Registrar Reporte de Eventos Extraordinarios", expanded=True):
-        with st.form("form_evento_contador"):
-            ev_fecha = st.date_input("Fecha del Evento", value=date.today())
-            ev_sucursal = st.selectbox("Sucursal / Salón de Evento", SUCURSALES_LISTA, key="ev_suc")
-            ev_h1, ev_h2 = st.columns(2)
-            with ev_h1:
-                ev_hora_ini = st.time_input("Horario: inicio del evento", value=time(18, 0))
-            with ev_h2:
-                ev_hora_fin = st.time_input("Horario: fin del evento", value=time(23, 0))
-            ev_costo = st.number_input("Costo por Boleto ($ MXN)", value=100, step=1)
-            ev_ini = st.number_input("Folio Inicial", value=1, step=1)
-            ev_fin = st.number_input("Folio Final", value=50, step=1)
-            ev_gastos = st.number_input("Gastos del Evento ($ MXN)", value=0.0, step=10.0)
-            ev_elaboro = st.text_input("Personal que elaboró", value="Staff Eventos")
-            ev_recibe = st.text_input("Recibe", value="Víctor (Contador)")
+        ev_fecha = st.date_input("Fecha del Evento", value=date.today())
+        ev_sucursal = st.selectbox("Sucursal / Salón de Evento", SUCURSALES_LISTA, key="ev_suc")
+        ev_h1, ev_h2 = st.columns(2)
+        with ev_h1:
+            ev_hora_ini = st.time_input("Horario: inicio del evento", value=time(18, 0), key="ev_h_ini")
+        with ev_h2:
+            ev_hora_fin = st.time_input("Horario: fin del evento", value=time(23, 0), key="ev_h_fin")
+        
+        ev_c1, ev_c2, ev_c3 = st.columns(3)
+        with ev_c1:
+            ev_costo = st.number_input("Costo por Boleto ($ MXN)", value=100, step=1, key="ev_costo")
+        with ev_c2:
+            ev_ini = st.number_input("Folio Inicial", value=1, step=1, key="ev_ini")
+        with ev_c3:
+            ev_fin = st.number_input("Folio Final", value=50, step=1, key="ev_fin")
 
-            if st.form_submit_button("🚀 Registrar Evento Extraordinario"):
-                if ev_sucursal != "-- Selecciona o busca la sucursal --":
-                    boletos_evt = max(0, (int(ev_fin) - int(ev_ini)) + 1)
-                    bruto_evt = boletos_evt * float(ev_costo)
-                    neto_evt = bruto_evt - float(ev_gastos)
-                    margen_evt = (neto_evt / bruto_evt * 100) if bruto_evt > 0 else 0.0
-                    rentabilidad_evt = evaluar_rentabilidad(margen_evt)
-                    horario_evt = f"{ev_hora_ini.strftime('%H:%M')} a {ev_hora_fin.strftime('%H:%M')}"
+        ev_gastos = st.number_input("Gastos del Evento ($ MXN)", value=0.0, step=10.0, key="ev_gastos")
 
-                    nuevo_evento = {
-                        "Fecha": ev_fecha.strftime("%d/%m/%Y"),
-                        "Sitio / Unidad": ev_sucursal,
-                        "Horario": horario_evt,
-                        "Costo Boleto": float(ev_costo),
-                        "Folio Inicial": int(ev_ini),
-                        "Folio Final": int(ev_fin),
-                        "Total Boletos": boletos_evt,
-                        "Sin Cobro": 0,
-                        "Cancelados": 0,
-                        "Perdidos": 0,
-                        "Boletos Cobrados": boletos_evt,
-                        "Ingreso Bruto": bruto_evt,
-                        "Gastos Especiales": float(ev_gastos),
-                        "Gastos Generales / Nómina": 0.0,
-                        "Total Gastos": float(ev_gastos),
-                        "Ingreso Neto": neto_evt,
-                        "Margen (%)": round(margen_evt, 2),
-                        "Rentabilidad": rentabilidad_evt,
-                        "Elaboró": ev_elaboro,
-                        "Recibe": ev_recibe,
-                        "Tipo": "Evento Extraordinario",
-                        "foto_bytes": None
-                    }
-                    st.session_state.registros.append(nuevo_evento)
-                    guardar_registros_permanentes(st.session_state.registros)
-                    st.success("✅ Reporte de evento registrado con éxito.")
-                    st.rerun()
-                else:
-                    st.error("❌ Por favor, selecciona una sucursal válida.")
+        ev_f1, ev_f2 = st.columns(2)
+        with ev_f1:
+            ev_elaboro = st.text_input("Personal que elaboró", value="Staff Eventos", key="ev_elab")
+        with ev_f2:
+            ev_recibe = st.text_input("Recibe", value="Víctor (Contador)", key="ev_rec")
+
+        # Balance en tiempo real para eventos
+        boletos_evt = max(0, (int(ev_fin) - int(ev_ini)) + 1) if int(ev_fin) >= int(ev_ini) and int(ev_ini) > 0 else 0
+        bruto_evt = boletos_evt * float(ev_costo)
+        neto_evt = bruto_evt - float(ev_gastos)
+        margen_evt = (neto_evt / bruto_evt * 100) if bruto_evt > 0 else 0.0
+
+        st.markdown("#### 📈 Balance Preliminar del Evento")
+        st.metric("🎟️ Boletos Pagados (Cobrados)", f"{boletos_evt} boletos")
+        
+        ev_m1, ev_m2, ev_m3 = st.columns(3)
+        ev_m1.metric("Ingreso Bruto", f"${bruto_evt:,.2f} MXN")
+        ev_m2.metric("Gastos del Evento", f"${float(ev_gastos):,.2f} MXN")
+        ev_m3.metric("Ingreso Neto", f"${neto_evt:,.2f} MXN", f"Margen: {margen_evt:.1f}%")
+        st.info(f"**Rentabilidad Estimada:** {evaluar_rentabilidad(margen_evt)}")
+
+        if st.button("🚀 Registrar Evento Extraordinario", key="btn_guardar_evento"):
+            if ev_sucursal != "-- Selecciona o busca la sucursal --":
+                horario_evt = f"{ev_hora_ini.strftime('%H:%M')} a {ev_hora_fin.strftime('%H:%M')}"
+                nuevo_evento = {
+                    "Fecha": ev_fecha.strftime("%d/%m/%Y"),
+                    "Sitio / Unidad": ev_sucursal,
+                    "Horario": horario_evt,
+                    "Costo Boleto": float(ev_costo),
+                    "Folio Inicial": int(ev_ini),
+                    "Folio Final": int(ev_fin),
+                    "Total Boletos": boletos_evt,
+                    "Sin Cobro": 0,
+                    "Cancelados": 0,
+                    "Perdidos": 0,
+                    "Boletos Cobrados": boletos_evt,
+                    "Ingreso Bruto": bruto_evt,
+                    "Gastos Especiales": float(ev_gastos),
+                    "Gastos Generales / Nómina": 0.0,
+                    "Total Gastos": float(ev_gastos),
+                    "Ingreso Neto": neto_evt,
+                    "Margen (%)": round(margen_evt, 2),
+                    "Rentabilidad": evaluar_rentabilidad(margen_evt),
+                    "Elaboró": ev_elaboro,
+                    "Recibe": ev_recibe,
+                    "Tipo": "Evento Extraordinario",
+                    "foto_bytes": None
+                }
+                st.session_state.registros.append(nuevo_evento)
+                guardar_registros_permanentes(st.session_state.registros)
+                st.success("✅ Reporte de evento registrado con éxito.")
+                st.rerun()
+            else:
+                st.error("❌ Por favor, selecciona una sucursal válida.")
 
     st.markdown("### 📊 Base de Datos General de Reportes")
     if st.session_state.registros:
@@ -286,7 +304,7 @@ else:
     with col_f1:
         fecha_op = st.date_input("Fecha:", value=date.today())
     with col_f2:
-        costo_boleto = st.number_input("Costo por Boleto ($ MXN):", value=st.session_state.costo_boleto_val, step=5)
+        costo_boleto = st.number_input("Costo por Boleto ($ MXN):", value=st.session_state.costo_boleto_val, step=5, key="costo_boleto_input")
 
     col_h1, col_h2 = st.columns(2)
     with col_h1:
@@ -299,86 +317,110 @@ else:
         if foto:
             st.image(foto, caption="Reporte Cargado", width=300)
 
-    with st.form("form_reporte_diario"):
-        st.markdown("#### 🎫 Control de Boletos")
-        c_b1, c_b2, c_b3 = st.columns(3)
-        with c_b1:
-            f_ini = st.number_input("Folio Inicial:", value=st.session_state.f_ini_val, step=1)
-            f_fin = st.number_input("Folio Final:", value=st.session_state.f_fin_val, step=1)
-        with c_b2:
-            f_sin = st.number_input("Boletos Sin Cobro:", value=st.session_state.f_sin_val, step=1)
-            f_can = st.number_input("Boletos Cancelados:", value=st.session_state.f_can_val, step=1)
-        with c_b3:
-            f_per = st.number_input("Boletos Perdidos:", value=st.session_state.f_per_val, step=1)
+    # Entradas interactivas sin form para cálculo instantáneo
+    st.markdown("#### 🎫 Control de Boletos")
+    c_b1, c_b2, c_b3 = st.columns(3)
+    with c_b1:
+        f_ini = st.number_input("Folio Inicial:", value=st.session_state.f_ini_val, step=1, key="input_f_ini")
+        f_fin = st.number_input("Folio Final:", value=st.session_state.f_fin_val, step=1, key="input_f_fin")
+    with c_b2:
+        f_sin = st.number_input("Boletos Sin Cobro:", value=st.session_state.f_sin_val, step=1, key="input_f_sin")
+        f_can = st.number_input("Boletos Cancelados:", value=st.session_state.f_can_val, step=1, key="input_f_can")
+    with c_b3:
+        f_per = st.number_input("Boletos Perdidos:", value=st.session_state.f_per_val, step=1, key="input_f_per")
 
-        st.markdown("#### 💵 Egresos y Gastos Operativos")
-        c_g1, c_g2 = st.columns(2)
-        with c_g1:
-            g_esp = st.number_input("Gastos Especiales ($ MXN):", value=st.session_state.g_esp_val, step=10.0)
-        with c_g2:
-            g_gen = st.number_input("Gastos Generales o Nómina ($ MXN):", value=st.session_state.g_gen_val, step=10.0)
+    st.markdown("#### 💵 Egresos y Gastos Operativos")
+    c_g1, c_g2 = st.columns(2)
+    with c_g1:
+        g_esp = st.number_input("Gastos Especiales ($ MXN):", value=st.session_state.g_esp_val, step=10.0, key="input_g_esp")
+    with c_g2:
+        g_gen = st.number_input("Gastos Generales o Nómina ($ MXN):", value=st.session_state.g_gen_val, step=10.0, key="input_g_gen")
 
-        st.markdown("#### ✍️ Firmas")
-        c_fir1, c_fir2 = st.columns(2)
-        with c_fir1:
-            elaboro = st.text_input("Elaboró:", value=st.session_state.usuario_autenticado)
-        with c_fir2:
-            recibe = st.text_input("Recibe:", value=st.session_state.recibe_val)
+    st.markdown("#### ✍️ Firmas")
+    c_fir1, c_fir2 = st.columns(2)
+    with c_fir1:
+        elaboro = st.text_input("Elaboró:", value=st.session_state.usuario_autenticado, key="input_elaboro")
+    with c_fir2:
+        recibe = st.text_input("Recibe:", value=st.session_state.recibe_val, key="input_recibe")
 
-        # Previsualización del balance en el formulario
-        boletos_total_prev = max(0, (int(f_fin) - int(f_ini)) + 1) if int(f_fin) >= int(f_ini) and int(f_ini) > 0 else 0
-        boletos_cobrados_prev = max(0, boletos_total_prev - int(f_sin) - int(f_can))
-        ingreso_bruto_prev = boletos_cobrados_prev * float(costo_boleto)
-        total_gastos_prev = float(g_esp) + float(g_gen)
-        ingreso_neto_prev = ingreso_bruto_prev - total_gastos_prev
-        margen_prev = (ingreso_neto_prev / ingreso_bruto_prev * 100) if ingreso_bruto_prev > 0 else 0.0
+    # Cálculos en tiempo real
+    total_boletos_calc = max(0, (int(f_fin) - int(f_ini)) + 1) if int(f_fin) >= int(f_ini) and int(f_ini) > 0 else 0
+    boletos_cobrados_calc = max(0, total_boletos_calc - int(f_sin) - int(f_can))
+    ingreso_bruto_calc = boletos_cobrados_calc * float(costo_boleto)
+    total_gastos_calc = float(g_esp) + float(g_gen)
+    ingreso_neto_calc = ingreso_bruto_calc - total_gastos_calc
+    margen_calc = (ingreso_neto_calc / ingreso_bruto_calc * 100) if ingreso_bruto_calc > 0 else 0.0
+    rentabilidad_calc = evaluar_rentabilidad(margen_calc)
 
-        st.markdown("---")
-        st.markdown("#### 📈 Balance Preliminar del Reporte")
-        m_c1, m_c2, m_c3, m_c4 = st.columns(4)
-        m_c1.metric("Ingreso Bruto", f"${ingreso_bruto_prev:,.2f} MXN")
-        m_c2.metric("Gastos Totales", f"${total_gastos_prev:,.2f} MXN")
-        m_c3.metric("Ingreso Neto", f"${ingreso_neto_prev:,.2f} MXN")
-        m_c4.metric("Rentabilidad", evaluar_rentabilidad(margen_prev), f"{margen_prev:.1f}%")
+    # --- SECCIÓN DE PREVISUALIZACIÓN Y CORRECCIÓN ---
+    st.markdown("---")
+    st.markdown("### 📊 Balance Preliminar del Reporte (Revisión antes de guardar)")
+    st.caption("Verifica las cifras. Puedes modificar cualquier folio o gasto arriba y el balance se actualizará automáticamente.")
 
-        if st.form_submit_button("💾 Guardar Reporte Diario"):
-            if sucursal != "-- Selecciona o busca la sucursal --":
-                total_boletos = max(0, (int(f_fin) - int(f_ini)) + 1)
-                boletos_cobrados = max(0, total_boletos - int(f_sin) - int(f_can))
-                bruto = boletos_cobrados * float(costo_boleto)
-                total_gastos = float(g_esp) + float(g_gen)
-                neto = bruto - total_gastos
-                margen = (neto / bruto * 100) if bruto > 0 else 0.0
-                rentabilidad = evaluar_rentabilidad(margen)
+    # Métrica de boletos pagados colocada arriba del ingreso bruto
+    st.metric(
+        label="🎟️ Boletos Pagados (Cobrados)",
+        value=f"{boletos_cobrados_calc} boletos",
+        help="Total expedidos menos boletos sin cobro y cancelados"
+    )
 
-                nuevo_registro = {
-                    "Fecha": fecha_op.strftime("%d/%m/%Y"),
-                    "Sitio / Unidad": sucursal,
-                    "Horario": f"{hora_ini.strftime('%H:%M')} a {hora_fin.strftime('%H:%M')}",
-                    "Costo Boleto": float(costo_boleto),
-                    "Folio Inicial": int(f_ini),
-                    "Folio Final": int(f_fin),
-                    "Total Boletos": total_boletos,
-                    "Sin Cobro": int(f_sin),
-                    "Cancelados": int(f_can),
-                    "Perdidos": int(f_per),
-                    "Boletos Cobrados": boletos_cobrados,
-                    "Ingreso Bruto": bruto,
-                    "Gastos Especiales": float(g_esp),
-                    "Gastos Generales / Nómina": float(g_gen),
-                    "Total Gastos": total_gastos,
-                    "Ingreso Neto": neto,
-                    "Margen (%)": round(margen, 2),
-                    "Rentabilidad": rentabilidad,
-                    "Elaboró": elaboro,
-                    "Recibe": recibe,
-                    "Tipo": "Operación Regular",
-                    "foto_bytes": foto.getvalue() if foto else None
-                }
-                st.session_state.registros.append(nuevo_registro)
-                guardar_registros_permanentes(st.session_state.registros)
-                st.success("✅ Reporte guardado correctamente.")
-                st.rerun()
-            else:
-                st.error("❌ Por favor, selecciona una sucursal.")
-        
+    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+    with col_m1:
+        st.metric("Ingreso Bruto", f"${ingreso_bruto_calc:,.2f} MXN")
+    with col_m2:
+        st.metric("Total de Gastos", f"${total_gastos_calc:,.2f} MXN")
+    with col_m3:
+        st.metric("Ingreso Neto", f"${ingreso_neto_calc:,.2f} MXN", delta=f"{margen_calc:.1f}% Margen")
+    with col_m4:
+        st.metric("Rentabilidad", rentabilidad_calc)
+
+    # Desglose en tabla rápida para verificación
+    df_revision = pd.DataFrame([{
+        "Total Boletos": total_boletos_calc,
+        "Sin Cobro / Cortesías": int(f_sin),
+        "Cancelados": int(f_can),
+        "Boletos Cobrados": boletos_cobrados_calc,
+        "Tarifa Unit.": f"${float(costo_boleto):,.2f}",
+        "Bruto": f"${ingreso_bruto_calc:,.2f}",
+        "Gastos Esp.": f"${float(g_esp):,.2f}",
+        "Gastos Gral./Nómina": f"${float(g_gen):,.2f}",
+        "Total Gastos": f"${total_gastos_calc:,.2f}",
+        "Neto": f"${ingreso_neto_calc:,.2f}",
+        "Rentabilidad": rentabilidad_calc
+    }])
+    st.dataframe(df_revision, use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+    if st.button("💾 Guardar y Confirmar Reporte Diario", type="primary", use_container_width=True):
+        if sucursal != "-- Selecciona o busca la sucursal --":
+            nuevo_registro = {
+                "Fecha": fecha_op.strftime("%d/%m/%Y"),
+                "Sitio / Unidad": sucursal,
+                "Horario": f"{hora_ini.strftime('%H:%M')} a {hora_fin.strftime('%H:%M')}",
+                "Costo Boleto": float(costo_boleto),
+                "Folio Inicial": int(f_ini),
+                "Folio Final": int(f_fin),
+                "Total Boletos": total_boletos_calc,
+                "Sin Cobro": int(f_sin),
+                "Cancelados": int(f_can),
+                "Perdidos": int(f_per),
+                "Boletos Cobrados": boletos_cobrados_calc,
+                "Ingreso Bruto": ingreso_bruto_calc,
+                "Gastos Especiales": float(g_esp),
+                "Gastos Generales / Nómina": float(g_gen),
+                "Total Gastos": total_gastos_calc,
+                "Ingreso Neto": ingreso_neto_calc,
+                "Margen (%)": round(margen_calc, 2),
+                "Rentabilidad": rentabilidad_calc,
+                "Elaboró": elaboro,
+                "Recibe": recibe,
+                "Tipo": "Operación Regular",
+                "foto_bytes": foto.getvalue() if foto else None
+            }
+            st.session_state.registros.append(nuevo_registro)
+            guardar_registros_permanentes(st.session_state.registros)
+            st.success("✅ ¡Reporte confirmado y guardado correctamente en la base de datos!")
+            st.rerun()
+        else:
+            st.error("❌ Por favor, selecciona una sucursal válida antes de guardar.")
+    
