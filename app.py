@@ -1,8 +1,8 @@
 import base64
-import base64
 import io
 import json
 import os
+import shutil
 from datetime import date, datetime, time
 import urllib.parse
 import pandas as pd
@@ -20,8 +20,11 @@ except ImportError:
     except ImportError:
         GENAI_AVAILABLE = False
 
-# Archivo permanente de base de datos local
+# Rutas locales permanentes
 DB_FILE = "reportes_clubpark.json"
+FOTOS_DIR = "fotos_reportes"
+
+os.makedirs(FOTOS_DIR, exist_ok=True)
 
 st.set_page_config(page_title="Club Park - Control Operativo MXN", page_icon="🚗", layout="wide")
 
@@ -39,33 +42,41 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- FUNCIONES DE ALMACENAMIENTO PERMANENTE ---
+# --- GESTIÓN DE ALMACENAMIENTO Y FOTOS (HASTA 1000+ FOTOS POR SEMANA) ---
+def guardar_imagen_optimizada(archivo_subido, sucursal, fecha_str):
+    """Comprime y guarda la imagen en disco físico para no saturar memoria RAM ni el JSON."""
+    try:
+        img = Image.open(archivo_subido)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        
+        # Redimensionar a resolución estándar de reporte legible
+        img.thumbnail((1280, 1280))
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        suc_clean = "".join(c for c in sucursal if c.isalnum() or c in (' ', '_')).strip().replace(" ", "_")
+        nombre_archivo = f"{fecha_str.replace('/', '-')}_{suc_clean}_{timestamp}.jpg"
+        ruta_completa = os.path.join(FOTOS_DIR, nombre_archivo)
+        
+        # Guardado en calidad balanceada (150-300 KB por imagen)
+        img.save(ruta_completa, "JPEG", quality=75, optimize=True)
+        return ruta_completa
+    except Exception as e:
+        st.error(f"Error al procesar la imagen: {e}")
+        return None
+
 def cargar_registros_guardados():
     if os.path.exists(DB_FILE):
         try:
             with open(DB_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                for reg in data:
-                    if reg.get("foto_b64"):
-                        reg["foto_bytes"] = base64.b64decode(reg["foto_b64"])
-                return data
+                return json.load(f)
         except Exception:
             return []
     return []
 
 def guardar_registros_permanentes(registros):
-    data_to_save = []
-    for reg in registros:
-        reg_copy = dict(reg)
-        if "foto_bytes" in reg_copy and reg_copy["foto_bytes"]:
-            reg_copy["foto_b64"] = base64.b64encode(reg_copy["foto_bytes"]).decode("utf-8")
-            del reg_copy["foto_bytes"]
-        elif "foto_bytes" in reg_copy:
-            del reg_copy["foto_bytes"]
-        data_to_save.append(reg_copy)
-
     with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(data_to_save, f, ensure_ascii=False, indent=4)
+        json.dump(registros, f, ensure_ascii=False, indent=4)
 
 def evaluar_rentabilidad(margen):
     if margen >= 40.0:
@@ -76,6 +87,12 @@ def evaluar_rentabilidad(margen):
         return "🟠 Baja"
     else:
         return "🔴 No Rentable (Pérdida)"
+
+def ya_existe_reporte(sucursal, fecha_str):
+    for reg in st.session_state.registros:
+        if reg.get("Sitio / Unidad") == sucursal and reg.get("Fecha") == fecha_str:
+            return True
+    return False
 
 if "registros" not in st.session_state:
     st.session_state.registros = cargar_registros_guardados()
@@ -93,7 +110,6 @@ UNIDADES_JESUS = ["PAMPAS", "RAMMA", "SUSHITTO", "BARRANCA", "CARAJILLO", "BENIN
 UNIDADES_VICTOR = ["SUMO STA", "CHEGARAY", "RYOSHI", "ENCANTO", "S. AZURA", "CHURRASCA"]
 SUCURSALES_LISTA = ["-- Selecciona o busca la sucursal --"] + list(PRECIOS_SUCURSALES.keys())
 
-# Función callback para actualizar el costo en el estado
 def on_sucursal_change():
     seleccion = st.session_state.get("select_sitio")
     if seleccion in PRECIOS_SUCURSALES:
@@ -155,7 +171,13 @@ if st.sidebar.button("🚪 Cerrar Sesión"):
     st.rerun()
 
 st.sidebar.markdown("---")
-st.sidebar.info(f"**Usuario actual:** {st.session_state.usuario_autenticado}\n\n**Rol:** {st.session_state.rol}\n\n**Total Acumulado:** {len(st.session_state.registros)} reportes guardados")
+total_fotos_almacenadas = len(os.listdir(FOTOS_DIR))
+st.sidebar.info(
+    f"**Usuario actual:** {st.session_state.usuario_autenticado}\n\n"
+    f"**Rol:** {st.session_state.rol}\n\n"
+    f"**Total Reportes:** {len(st.session_state.registros)}\n\n"
+    f"**Fotos Guardadas:** {total_fotos_almacenadas}"
+)
 
 # ==========================================
 # PANEL CONTADOR AUDITOR
@@ -163,9 +185,9 @@ st.sidebar.info(f"**Usuario actual:** {st.session_state.usuario_autenticado}\n\n
 if st.session_state.rol == "Contador Auditor":
     st.markdown("---")
     st.markdown("## 🔍 Panel de Auditoría, Balance Financiero y Control de Eventos (Contador)")
-    st.info("Estimado Víctor, desde este panel tienes acceso al control masivo, balance semanal y facultad especial para registrar reportes de eventos.")
+    st.info("Víctor, tienes privilegios exclusivos para eliminar reportes, cargar reportes repetidos del mismo día y auditar fotos.")
 
-    with st.expander("📲 Enviar Recordatorio de Reportes Faltantes por WhatsApp", expanded=True):
+    with st.expander("📲 Enviar Recordatorio de Reportes Faltantes por WhatsApp", expanded=False):
         st.markdown("### 🔔 Control de Reportes Faltantes a Supervisores")
         fecha_revision = st.date_input("Selecciona la fecha a revisar:", value=date.today(), key="fecha_rev_contador")
         fecha_rev_str = fecha_revision.strftime("%d/%m/%Y")
@@ -196,9 +218,7 @@ if st.session_state.rol == "Contador Auditor":
             else:
                 st.success("✅ ¡Víctor Manuel ha completado todos sus reportes!")
 
-    st.markdown("---")
-
-    with st.expander("🎪 Registrar Reporte de Eventos Extraordinarios", expanded=True):
+    with st.expander("🎪 Registrar Reporte de Eventos Extraordinarios", expanded=False):
         ev_fecha = st.date_input("Fecha del Evento", value=date.today())
         ev_sucursal = st.selectbox("Sucursal / Salón de Evento", SUCURSALES_LISTA, key="ev_suc")
         ev_h1, ev_h2 = st.columns(2)
@@ -228,9 +248,7 @@ if st.session_state.rol == "Contador Auditor":
         neto_evt = bruto_evt - float(ev_gastos)
         margen_evt = (neto_evt / bruto_evt * 100) if bruto_evt > 0 else 0.0
 
-        st.markdown("#### 📈 Balance Preliminar del Evento")
         st.metric("🎟️ Boletos Pagados (Cobrados)", f"{boletos_evt} boletos")
-        
         ev_m1, ev_m2, ev_m3 = st.columns(3)
         ev_m1.metric("Ingreso Bruto", f"${bruto_evt:,.2f} MXN")
         ev_m2.metric("Gastos del Evento", f"${float(ev_gastos):,.2f} MXN")
@@ -262,28 +280,70 @@ if st.session_state.rol == "Contador Auditor":
                     "Elaboró": ev_elaboro,
                     "Recibe": ev_recibe,
                     "Tipo": "Evento Extraordinario",
-                    "foto_bytes": None
+                    "foto_path": None
                 }
                 st.session_state.registros.append(nuevo_evento)
                 guardar_registros_permanentes(st.session_state.registros)
-                st.success("✅ Reporte de evento registrado con éxito.")
+                st.success("✅ Reporte de evento registrado.")
                 st.rerun()
             else:
-                st.error("❌ Por favor, selecciona una sucursal válida.")
+                st.error("❌ Selecciona una sucursal.")
 
-    st.markdown("### 📊 Base de Datos General de Reportes")
+    # --- SECCIÓN EXCLUSIVA: ADMINISTRACIÓN Y ELIMINACIÓN DE REPORTES ---
+    st.markdown("---")
+    st.markdown("### 🗑️ Administración y Eliminación de Reportes (Exclusivo Auditor)")
+    if st.session_state.registros:
+        opciones_borrar = [
+            f"ID #{i} | {r.get('Fecha')} | {r.get('Sitio / Unidad')} | Neto: ${r.get('Ingreso Neto', 0):,.2f}"
+            for i, r in enumerate(st.session_state.registros)
+        ]
+        seleccion_eliminar = st.selectbox("Selecciona un reporte para auditar o eliminar:", opciones_borrar)
+        idx_eliminar = int(seleccion_eliminar.split(" | ")[0].replace("ID #", ""))
+        reporte_sel = st.session_state.registros[idx_eliminar]
+
+        c_det1, c_det2 = st.columns([2, 1])
+        with c_det1:
+            st.json(reporte_sel)
+        with c_det2:
+            if reporte_sel.get("foto_path") and os.path.exists(reporte_sel["foto_path"]):
+                st.image(reporte_sel["foto_path"], caption="Foto física del reporte", width=280)
+            else:
+                st.caption("Sin fotografía adjunta.")
+
+        col_del1, col_del2 = st.columns([1, 4])
+        with col_del1:
+            if st.button("❌ Eliminar Reporte Permanentemente", type="primary"):
+                # Eliminar foto si existe en disco
+                foto_ruta = reporte_sel.get("foto_path")
+                if foto_ruta and os.path.exists(foto_ruta):
+                    try:
+                        os.remove(foto_ruta)
+                    except Exception:
+                        pass
+                
+                st.session_state.registros.pop(idx_eliminar)
+                guardar_registros_permanentes(st.session_state.registros)
+                st.success("✅ Reporte y archivo físico eliminados correctamente.")
+                st.rerun()
+
+    st.markdown("---")
+    st.markdown("### 📊 Base de Datos General")
     if st.session_state.registros:
         df_registros = pd.DataFrame(st.session_state.registros)
-        st.dataframe(df_registros.drop(columns=["foto_bytes", "foto_b64"], errors="ignore"), use_container_width=True)
+        st.dataframe(df_registros.drop(columns=["foto_path", "foto_bytes", "foto_b64"], errors="ignore"), use_container_width=True)
     else:
-        st.info("No hay reportes registrados hasta el momento.")
+        st.info("No hay reportes registrados.")
 
 # ==========================================
-# PANEL SUPERVISORES
+# PANEL SUPERVISORES (Y MODO DE CARGA CONTADOR)
 # ==========================================
-else:
-    st.markdown("---")
-    st.markdown(f"## 📋 Registro Diario de Operaciones ({st.session_state.usuario_autenticado})")
+if st.session_state.rol == "Supervisor" or st.session_state.rol == "Contador Auditor":
+    if st.session_state.rol == "Supervisor":
+        st.markdown("---")
+        st.markdown(f"## 📋 Registro Diario de Operaciones ({st.session_state.usuario_autenticado})")
+    else:
+        st.markdown("---")
+        st.markdown("## 📥 Captura Directa de Operaciones (Facultad de Contador)")
 
     sucursal = st.selectbox(
         "Sucursal / Unidad:",
@@ -297,6 +357,7 @@ else:
     col_f1, col_f2 = st.columns(2)
     with col_f1:
         fecha_op = st.date_input("Fecha:", value=date.today())
+        fecha_op_str = fecha_op.strftime("%d/%m/%Y")
     with col_f2:
         if es_ingreso_directo:
             st.info("📌 En esta unidad se captura directamente el Ingreso Bruto en el Folio Inicial.")
@@ -314,8 +375,8 @@ else:
     with col_h2:
         hora_fin = st.time_input("Hora de Cierre:", value=time(23, 0))
 
-    with st.expander("📷 Captura o Escaneo de Reporte Físico", expanded=False):
-        foto = st.file_uploader("Subir foto del reporte físico:", type=["png", "jpg", "jpeg"])
+    with st.expander("📷 Captura o Escaneo de Reporte Físico", expanded=True):
+        foto = st.file_uploader("Subir foto del reporte físico (Almacenamiento optimizado):", type=["png", "jpg", "jpeg"])
         if foto:
             st.image(foto, caption="Reporte Cargado", width=300)
 
@@ -363,7 +424,6 @@ else:
     with c_fir2:
         recibe = st.text_input("Recibe:", value="", key="input_recibe")
 
-    # Cálculos en tiempo real
     total_gastos_calc = float(g_esp) + float(g_gen)
     ingreso_neto_calc = ingreso_bruto_calc - total_gastos_calc
     margen_calc = (ingreso_neto_calc / ingreso_bruto_calc * 100) if ingreso_bruto_calc > 0 else 0.0
@@ -371,8 +431,7 @@ else:
 
     # --- BALANCE PRELIMINAR ---
     st.markdown("---")
-    st.markdown("### 📊 Balance Preliminar del Reporte (Revisión antes de guardar)")
-    st.caption("Verifica las cifras. Puedes modificar cualquier valor arriba y el balance se actualizará automáticamente.")
+    st.markdown("### 📊 Balance Preliminar del Reporte")
 
     if not es_ingreso_directo:
         st.metric(
@@ -393,55 +452,4 @@ else:
     with col_m2:
         st.metric("Total de Gastos y Nómina", f"${total_gastos_calc:,.2f} MXN")
     with col_m3:
-        st.metric("Ingreso Neto", f"${ingreso_neto_calc:,.2f} MXN", delta=f"{margen_calc:.1f}% Margen")
-    with col_m4:
-        st.metric("Rentabilidad", rentabilidad_calc)
-
-    # Tabla de resumen
-    df_revision = pd.DataFrame([{
-        "Sucursal": sucursal,
-        "Total Boletos": total_boletos_calc if not es_ingreso_directo else "N/A",
-        "Boletos Cobrados": boletos_cobrados_calc if not es_ingreso_directo else "N/A",
-        "Ingreso Bruto": f"${ingreso_bruto_calc:,.2f}",
-        "Gastos Esp.": f"${float(g_esp):,.2f}",
-        "Gastos Gral./Nómina": f"${float(g_gen):,.2f}",
-        "Total Gastos": f"${total_gastos_calc:,.2f}",
-        "Neto": f"${ingreso_neto_calc:,.2f}",
-        "Rentabilidad": rentabilidad_calc
-    }])
-    st.dataframe(df_revision, use_container_width=True, hide_index=True)
-
-    st.markdown("---")
-    if st.button("💾 Guardar y Confirmar Reporte Diario", type="primary", use_container_width=True):
-        if sucursal != "-- Selecciona o busca la sucursal --":
-            nuevo_registro = {
-                "Fecha": fecha_op.strftime("%d/%m/%Y"),
-                "Sitio / Unidad": sucursal,
-                "Horario": f"{hora_ini.strftime('%H:%M')} a {hora_fin.strftime('%H:%M')}",
-                "Costo Boleto": float(costo_boleto),
-                "Folio Inicial": int(f_ini),
-                "Folio Final": int(f_fin),
-                "Total Boletos": total_boletos_calc,
-                "Sin Cobro": int(f_sin),
-                "Cancelados": int(f_can),
-                "Perdidos": int(f_per),
-                "Boletos Cobrados": boletos_cobrados_calc,
-                "Ingreso Bruto": ingreso_bruto_calc,
-                "Gastos Especiales": float(g_esp),
-                "Gastos Generales / Nómina": float(g_gen),
-                "Total Gastos": total_gastos_calc,
-                "Ingreso Neto": ingreso_neto_calc,
-                "Margen (%)": round(margen_calc, 2),
-                "Rentabilidad": rentabilidad_calc,
-                "Elaboró": elaboro,
-                "Recibe": recibe,
-                "Tipo": "Operación Regular" if not es_ingreso_directo else "Ingreso Directo",
-                "foto_bytes": foto.getvalue() if foto else None
-            }
-            st.session_state.registros.append(nuevo_registro)
-            guardar_registros_permanentes(st.session_state.registros)
-            st.success("✅ ¡Reporte confirmado y guardado correctamente en la base de datos!")
-            st.rerun()
-        else:
-            st.error("❌ Por favor, selecciona una sucursal válida antes de guardar.")
-            
+        st.metric("Ingreso Neto",
