@@ -499,7 +499,14 @@ if es_contador:
         ev_neto = ev_bruto - float(ev_gastos)
         ev_margen = (ev_neto / ev_bruto * 100) if ev_bruto > 0 else 0.0
 
-        st.info(f"**Boletos:** {ev_boletos} | **Bruto:** ${ev_bruto:,.2f} | **Gastos:** ${ev_gastos:,.2f} \vert{} **Neto:**${ev_neto:,.2f} | **Rentabilidad:** {evaluar_rentabilidad(ev_margen)}")
+        st.info(
+    f"**Boletos:** {ev_boletos} | "
+    f"**Bruto:** ${ev_bruto:,.2f} | "
+    f"**Gastos:** ${ev_gastos:,.2f} | "
+    f"**Neto:** ${ev_neto:,.2f} | "
+    f"**Rentabilidad:** {evaluar_rentabilidad(ev_margen)}"
+        )
+        
 
         if st.button("🚀 Registrar Evento Extraordinario", key="btn_save_evento", type="primary"):
             if ev_suc != "-- Selecciona o busca la sucursal --":
