@@ -452,5 +452,14 @@ if st.session_state.rol == "Supervisor" or st.session_state.rol == "Contador Aud
 
     st.markdown("---")
     
-    if existe_duplicado and not es_contador:
-        st.error(f"🚫 **REPORTE YA EXISTE:** La sucursal **{sucursal}** 
+    
+if existe_duplicado and not es_contador:
+    st.error(
+        f"🚫 **REPORTE YA EXISTE:** "
+        f"La sucursal **{sucursal}** ya tiene un reporte registrado."
+    )
+    st.warning(
+        "No se puede registrar nuevamente este reporte."
+    )
+    st.stop()
+    
