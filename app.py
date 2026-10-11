@@ -449,4 +449,22 @@ with col_m4:
 st.info(f"**Rentabilidad Preliminar Estimada:** {rentabilidad_calc}")
 
 # --- VALIDACIONES Y BOTÓN DE GUARDADO ---
-ya_existe = existe_reporte_previo(su
+ya_existe = existe_reporte_previo(sucursal, fecha_op_str)
+
+st.markdown("---")
+
+puede_guardar = True
+mensaje_advertencia = None
+
+if sucursal == "-- Selecciona o busca la sucursal --":
+    puede_guardar = False
+    mensaje_advertencia = (
+        "Selecciona una sucursal antes de guardar."
+    )
+elif ya_existe and not es_contador:
+    puede_guardar = False
+    mensaje_advertencia = (
+        f"Ya existe un reporte de {sucursal} "
+        f"para la fecha {fecha_op_str}."
+    )
+
