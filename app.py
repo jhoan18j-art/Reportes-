@@ -843,7 +843,9 @@ if es_contador:
 
     st.info(
         f"**Boletos:** {ev_boletos} | **Bruto:** ${ev_bruto:,.2f} |"
-        f" **Gastos:** ${ev_gastos:,.2f} \vert{} **Neto:**${ev_neto:,.2f} |"
+        
+f" **Gastos:** ${ev_gastos:,.2f} | **Neto:** ${ev_neto:,.2f} |"
+      
         f" **Rentabilidad:** {evaluar_rentabilidad(ev_margen)}"
     )
 
