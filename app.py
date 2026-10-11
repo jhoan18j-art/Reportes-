@@ -438,11 +438,26 @@ if st.session_state.usuario_autenticado is None:
         pass_visor = st.secrets.get("PASS_SUPERVISOR", "visor123") if hasattr(st, "secrets") else "visor123"
         pass_auditor = st.secrets.get("PASS_AUDITOR", "contador123") if hasattr(st, "secrets") else "contador123"
 
-        if st.button("🔑 Iniciar Sesión", use_container_width=True, type="primary"):
-            if nombre_usuario in ["Víctor Manuel", "José de Jesús"] and password == pass_visor:
-                st.session_state.usuario_autenticado = nombre_usuario
-                st.session_state.rol = "Supervisor"
-                st.success(f"Bienvenido {nombre_usuario}")
-                st.rerun()
-            elif nombre_usuario == "Víctor (Contador)" and password == pass_auditor:
-                st.session_state.usuario_autenticado = "Víct
+        
+if st.button("🔑 Iniciar Sesión", use_container_width=True, type="primary"):
+    if (
+        nombre_usuario in ["Víctor Manuel", "José de Jesús"]
+        and password == pass_visor
+    ):
+        st.session_state.usuario_autenticado = nombre_usuario
+        st.session_state.rol = "Supervisor"
+        st.success(f"Bienvenido {nombre_usuario}")
+        st.rerun()
+
+    elif (
+        nombre_usuario == "Víctor (Contador)"
+        and password == pass_auditor
+    ):
+        st.session_state.usuario_autenticado = "Víctor (Contador)"
+        st.session_state.rol = "Auditor"
+        st.success("Bienvenido, auditor")
+        st.rerun()
+
+    else:
+        st.error("Usuario o contraseña incorrectos.")
+        
