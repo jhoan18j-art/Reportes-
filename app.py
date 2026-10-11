@@ -3,7 +3,7 @@ import io
 import json
 import os
 import shutil
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 import urllib.parse
 import pandas as pd
 import streamlit as st
@@ -167,7 +167,7 @@ if st.sidebar.button("🚪 Cerrar Sesión"):
     st.rerun()
 
 st.sidebar.markdown("---")
-total_fotos_almacenadas = len(os.listdir(FOTOS_DIR))
+total_fotos_almacenadas = len(os.listdir(FOTOS_DIR)) if os.path.exists(FOTOS_DIR) else 0
 st.sidebar.info(
     f"**Usuario actual:** {st.session_state.usuario_autenticado}\n\n"
     f"**Rol:** {st.session_state.rol}\n\n"
@@ -456,11 +456,9 @@ if existe_duplicado and not es_contador:
     st.warning("⚠️ Como supervisor, solo puedes subir un reporte por sucursal al día. Si hubo un error o requieres subir un reporte extemporáneo, solicita el apoyo del Contador Auditor.")
 else:
     if existe_duplicado and es_contador:
-        st.warning(f"⚠️ **Atención:** Ya existe un reporte de **{sucursal}** para la fecha **{fecha_op_str}**. Como Contador Auditor, puedes forzar el guardado.")
+        st.warning(f"⚠️ **Atención:** Ya existe un reporte de **{sucursal}** para la fecha **{fecha_op_str}**. Al guardar, se actualizará el reporte existente.")
 
     if st.button("💾 Guardar y Confirmar Reporte Diario", type="primary", use_container_width=True):
-        if sucursal != "-- Selecciona o busca la sucursal --":
-            ruta_guardada = None
-            if foto:
-                ruta_guardada = guardar_imagen_optimizada(foto, sucursal, fecha_op_str)
-
+        if sucursal == "-- Selecciona o busca la sucursal --":
+            st.error("❌ Por favor selecciona una sucursal válida antes de guardar.")
+        else
