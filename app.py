@@ -453,4 +453,4 @@ if st.session_state.rol == "Supervisor" or st.session_state.rol == "Contador Aud
     st.markdown("---")
     
     if existe_duplicado and not es_contador:
-        st.error(f"🚫 **REPORTE YA EXISTE:** La sucursal **{sucursal}** ya cu
+        st.error(f"🚫 **REPORTE YA EXISTE:** La sucursal **{sucursal}** 
