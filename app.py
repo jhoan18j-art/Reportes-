@@ -437,17 +437,30 @@ if mensaje_advertencia:
     st.error(mensaje_advertencia)
 
 if st.button("💾 Guardar y Confirmar Reporte", type="primary", disabled=not puede_guardar, use_container_width=True):
-    with st.spinner("Guardando reporte y asegurando en disco..."):
-        ruta_guardada = None
-        if foto:
-            ruta_guardada = guardar_imagen_optimizada(foto, sucursal, fecha_op_str)
+    
+with st.spinner("Guardando reporte y asegurando en disco..."):
+    ruta_guardada = None
 
-        horario_str = f"{hora_ini.strftime('%H:%M')} a {hora_fin.strftime('%H:%M')}"
+    if foto:
+        ruta_guardada = guardar_imagen_optimizada(
+            foto, sucursal, fecha_op_str
+        )
 
-        nuevo_reporte = {
-            "Fecha": fecha_op_str,
-            "Sitio / Unidad": sucursal,
-            "Horario": horario_str,
-            "Costo Boleto": float(costo_boleto),
-            "Folio Inicial": float(f_ini) if es_ingreso_directo else int(f_ini),
-            "Folio Final": 0 if es_ingreso_directo else int(f_f
+    horario_str = (
+        f"{hora_ini.strftime('%H:%M')} a "
+        f"{hora_fin.strftime('%H:%M')}"
+    )
+
+    nuevo_reporte = {
+        "Fecha": fecha_op_str,
+        "Sitio / Unidad": sucursal,
+        "Horario": horario_str,
+        "Costo Boleto": float(costo_boleto),
+        "Folio Inicial": (
+            float(f_ini) if es_ingreso_directo else int(f_ini)
+        ),
+        "Folio Final": (
+            0 if es_ingreso_directo else int(f_f)
+        ),
+    }
+    
