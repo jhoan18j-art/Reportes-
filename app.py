@@ -806,7 +806,9 @@ if es_contador:
     st.markdown("#### 🎪 Capturar Evento Extraordinario")
     ev_c1, ev_c2 = st.columns(2)
     with ev_c1:
-      ev_fecha = st.date_input("Fecha del Evento", value=date.today(), key="ev_fecha")
+      ev_fecha = st.date_input(
+          "Fecha del Evento", value=date.today(), key="ev_fecha"
+      )
       ev_suc = st.selectbox(
           "Sucursal / Salón del Evento", SUCURSALES_LISTA, key="ev_suc"
       )
@@ -1293,7 +1295,7 @@ if st.button(
             f"{hora_ini.strftime('%H:%M')} a {hora_fin.strftime('%H:%M')}"
         ),
         "Costo Boleto": 0.0 if es_ingreso_directo else float(costo_boleto),
-        "Folio Inicial": 0 if es_ingreso_direct_o else int(f_ini),
+        "Folio Inicial": 0 if es_ingreso_directo else int(f_ini),
         "Folio Final": 0 if es_ingreso_directo else int(f_fin),
         "Total Boletos": total_boletos_calc,
         "Sin Cobro": 0 if es_ingreso_directo else int(f_sin),
@@ -1325,7 +1327,8 @@ if st.button(
       st.success(f"✅ Reporte guardado exitosamente con ID: `{id_nuevo}`")
       st.balloons()
       st.rerun()
-    else:3
+    else:
       st.error(
           "❌ Ocurrió un error al guardar el reporte en el disco permanente."
       )
+    
