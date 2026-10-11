@@ -2,7 +2,7 @@ import base64
 import io
 import json
 import os
-from datetime import date, datetime
+from datetime import date, datetime, time
 import urllib.parse
 import pandas as pd
 import streamlit as st
@@ -199,6 +199,11 @@ if st.session_state.rol == "Contador Auditor":
         with st.form("form_evento_contador"):
             ev_fecha = st.date_input("Fecha del Evento", value=date.today())
             ev_sucursal = st.selectbox("Sucursal / Salón de Evento", SUCURSALES_LISTA, key="ev_suc")
+            ev_h1, ev_h2 = st.columns(2)
+            with ev_h1:
+                ev_hora_ini = st.time_input("Horario: inicio del evento", value=time(18, 0))
+            with ev_h2:
+                ev_hora_fin = st.time_input("Horario: fin del evento", value=time(23, 0))
             ev_costo = st.number_input("Costo por Boleto ($ MXN)", value=100, step=1)
             ev_ini = st.number_input("Folio Inicial", value=1, step=1)
             ev_fin = st.number_input("Folio Final", value=50, step=1)
@@ -211,9 +216,13 @@ if st.session_state.rol == "Contador Auditor":
                     boletos_evt = max(0, (int(ev_fin) - int(ev_ini)) + 1)
                     bruto_evt = boletos_evt * float(ev_costo)
                     neto_evt = bruto_evt - float(ev_gastos)
+                    horario_evt = f"{ev_hora_ini.strftime('%H:%M')} a {ev_hora_fin.strftime('%H:%M')}"
 
                     reg_evento = {
                         "Fecha": ev_fecha.strftime("%d/%m/%Y"),
+                        "Fecha de Evento": ev_fecha.strftime("%d/%m/%Y"),
+                        "Sucursal / Salón de Evento": ev_sucursal,
+                        "Horario": horario_evt,
                         "Supervisor": "Víctor (Contador - Evento)",
                         "Sitio / Unidad": ev_sucursal,
                         "Costo Boleto (MXN)": ev_costo,
@@ -230,12 +239,20 @@ if st.session_state.rol == "Contador Auditor":
                     }
                     st.session_state.registros.append(reg_evento)
                     guardar_registros_permanentes(st.session_state.registros)
-                    st.success("¡Reporte de evento guardado!")
+                    st.success(f"¡Evento guardado! {boletos_evt} boletos × ${float(ev_costo):,.2f} = ${bruto_evt:,.2f}; menos gastos ${float(ev_gastos):,.2f} = ${neto_evt:,.2f}")
                     st.rerun()
 
     if st.session_state.registros:
         registros_limpios = [{k: v for k, v in reg.items() if k not in ["foto_bytes", "foto_b64"]} for reg in st.session_state.registros]
         df_auditoria = pd.DataFrame(registros_limpios)
+        for col in ["Fecha de Evento", "Sucursal / Salón de Evento", "Horario"]:
+            if col not in df_auditoria.columns:
+                df_auditoria[col] = ""
+        df_auditoria["Fecha de Evento"] = df_auditoria["Fecha de Evento"].replace("", pd.NA).fillna(df_auditoria.get("Fecha", ""))
+        df_auditoria["Sucursal / Salón de Evento"] = df_auditoria["Sucursal / Salón de Evento"].replace("", pd.NA).fillna(df_auditoria.get("Sitio / Unidad", ""))
+        df_auditoria["Horario"] = df_auditoria["Horario"].fillna("")
+        primeras = ["Fecha de Evento", "Sucursal / Salón de Evento", "Horario"]
+        df_auditoria = df_auditoria[primeras + [c for c in df_auditoria.columns if c not in primeras]]
 
         st.markdown(f"### 👥 Control de Hojas de Reporte Subidas ({len(st.session_state.registros)})")
         st.dataframe(df_auditoria, use_container_width=True)
@@ -336,7 +353,9 @@ sucursal_sel = st.selectbox(
 with st.form("form_reporte_supervisor"):
     col_f1, col_f2 = st.columns(2)
     with col_f1:
-        fecha_rep = st.date_input("Fecha de Operación", value=date.today())
+        fecha_rep = st.date_input("Fecha de Evento / Operación", value=date.today())
+        hora_ini = st.time_input("Horario: inicio", value=time(8, 0))
+        hora_fin = st.time_input("Horario: fin", value=time(22, 0))
     with col_f2:
         costo_boleto = st.number_input("Costo por Boleto ($ MXN)", step=1, key="costo_boleto_val")
         supervisor_nombre = st.session_state.usuario_autenticado
@@ -351,6 +370,9 @@ with st.form("form_reporte_supervisor"):
         f_can = st.number_input("Boletos Cancelados", step=1, key="f_can_val")
     with c_fol3:
         f_per = st.number_input("Boletos Perdidos", step=1, key="f_per_val")
+
+    st.caption("Boletos = (Folio Final − Folio Inicial) + 1 − sin desprender − cancelados − perdidos. "
+               "Ingreso = Boletos × Costo. Neto = Ingreso − Gastos de operación. El cálculo se muestra al guardar.")
 
     st.markdown("#### 💸 Gastos de Operación")
     col_g1, col_g2 = st.columns(2)
@@ -373,42 +395,4 @@ with st.form("form_reporte_supervisor"):
             st.error("❌ Por favor selecciona una sucursal válida.")
         else:
             tot_entregados = max(0, (f_fin - f_ini) + 1 - f_sin)
-            tot_pagados = max(0, tot_entregados - f_can - f_per)
-
-            ingreso_bruto = tot_pagados * float(costo_boleto)
-            total_gastos = float(g_esp) + float(g_gen)
-            ingreso_neto = ingreso_bruto - total_gastos
-            rentabilidad = (ingreso_neto / ingreso_bruto * 100) if ingreso_bruto > 0 else 0.0
-
-            foto_bytes = foto_reporte.getvalue() if foto_reporte is not None else None
-
-            nuevo_registro = {
-                "Fecha": fecha_rep.strftime("%d/%m/%Y"),
-                "Supervisor": supervisor_nombre,
-                "Sitio / Unidad": sucursal_sel,
-                "Costo Boleto (MXN)": costo_boleto,
-                "Folio Inicial": f_ini,
-                "Folio Final": f_fin,
-                "Folio sin desprender": f_sin,
-                "Total Boletos Entregados": tot_entregados,
-                "Boletos Pagados (A Entregar)": tot_pagados,
-                "Cancelados": f_can,
-                "Pérdidos": f_per,
-                "Gastos de Operación": "Detallado",
-                "Gastos Especiales (MXN)": g_esp,
-                "Gastos Generales (MXN)": g_gen,
-                "Total Gastos y Nóminas (MXN)": total_gastos,
-                "Ingreso Bruto (MXN)": ingreso_bruto,
-                "Ingreso Neto / Utilidad (MXN)": ingreso_neto,
-                "Rentabilidad (%)": rentabilidad,
-                "Cantidad a Entregar (MXN)": ingreso_neto,
-                "Elaboró": elaboro_txt,
-                "Recibe": recibe_txt,
-                "Evidencia Foto": "Adjunta" if foto_bytes else "Sin foto",
-                "foto_bytes": foto_bytes
-            }
-
-            st.session_state.registros.append(nuevo_registro)
-            guardar_registros_permanentes(st.session_state.registros)
-
-            
+  
