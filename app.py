@@ -269,147 +269,130 @@ if st.session_state.rol == "Contador Auditor":
 # ==========================================
 # PANEL SUPERVISORES Y CAPTURA CON IA
 # ==========================================
-for k, v in {"fecha_val": date.today(), "hora_ini_val": time(8, 0), "hora_fin_val": time(22, 0)}.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
-
-
-# Limpiar campos después de guardar (debe hacerse ANTES de dibujar los campos)
-if st.session_state.pop("limpiar_form", False):
-    for k, v in CAMPOS_INICIALES.items():
-        st.session_state[k] = v
-    st.session_state.foto_analizada = None
-    st.session_state.select_sitio = SUCURSALES_LISTA[0]
-
-
-def _num(v, tipo=float):
-    try:
-        return tipo(str(v).replace("$", "").replace(",", "").strip() or 0)
-    except Exception:
-        return tipo(0)
-
-
-def _hora(v, defecto):
-    try:
-        h, m = str(v).strip()[:5].split(":")
-        return time(int(h), int(m))
-    except Exception:
-        return defecto
-
-
-def analizar_foto(imagen, api_key):
-    prompt = (
-        "Analiza la foto de este reporte de Club Park (valet/estacionamiento), impreso o escrito a mano. "
-        "Devuelve SOLO un JSON (sin ```), con estas llaves, usando lo escrito en el papel; números sin signo $; "
-        "si algo no aparece usa \"\" o 0: "
-        '{"sitio": "", "fecha": "AAAA-MM-DD", "hora_inicio": "HH:MM", "hora_fin": "HH:MM", '
-        '"costo_boleto": 0, "folio_inicial": 0, "folio_final": 0, "folio_sin_desprender": 0, '
-        '"cancelados": 0, "perdidos": 0, "gastos_especiales": 0, "gastos_generales": 0, '
-        '"elaboro": "", "recibe": ""}. '
-        "gastos_generales = sueldos/nómina/gastos de operación. "
-        f"Para sitio elige el nombre más parecido de esta lista: {', '.join(PRECIOS_SUCURSALES.keys())}."
-    )
-    texto = None
-    try:
-        from google import genai as g
-        r = g.Client(api_key=api_key).models.generate_content(model="gemini-2.5-flash", contents=[prompt, imagen])
-        texto = (r.text or "").strip()
-    except Exception:
-        import google.generativeai as gl
-        gl.configure(api_key=api_key)
-        texto = (gl.GenerativeModel("gemini-2.5-flash").generate_content([prompt, imagen]).text or "").strip()
-    return json.loads(texto.replace("```json", "").replace("```", "").strip())
-
-
-def llenar_desde_ia(d):
-    sitio = str(d.get("sitio", "") or "").strip()
-    if sitio in PRECIOS_SUCURSALES:
-        st.session_state.select_sitio = sitio
-    try:
-        st.session_state.fecha_val = datetime.strptime(str(d.get("fecha", "")), "%Y-%m-%d").date()
-    except Exception:
-        pass
-    st.session_state.hora_ini_val = _hora(d.get("hora_inicio"), st.session_state.hora_ini_val)
-    st.session_state.hora_fin_val = _hora(d.get("hora_fin"), st.session_state.hora_fin_val)
-    costo = _num(d.get("costo_boleto"), int)
-    if costo:
-        st.session_state.costo_boleto_val = costo
-    elif sitio in PRECIOS_SUCURSALES:
-        st.session_state.costo_boleto_val = PRECIOS_SUCURSALES[sitio]
-    st.session_state.f_ini_val = _num(d.get("folio_inicial"), int)
-    st.session_state.f_fin_val = _num(d.get("folio_final"), int)
-    st.session_state.f_sin_val = _num(d.get("folio_sin_desprender"), int)
-    st.session_state.f_can_val = _num(d.get("cancelados"), int)
-    st.session_state.f_per_val = _num(d.get("perdidos"), int)
-    st.session_state.g_esp_val = _num(d.get("gastos_especiales"))
-    st.session_state.g_gen_val = _num(d.get("gastos_generales"))
-    st.session_state.elaboro_val = str(d.get("elaboro", "") or "")
-    st.session_state.recibe_val = str(d.get("recibe", "") or "")
-
-
 st.markdown("---")
-st.markdown("### 📸 1. Foto del Reporte (se analiza sola al tomarla)")
+st.markdown("### 📸 1. Evidencia Fotográfica del Reporte Físico")
 foto_reporte = st.file_uploader("Tomar o subir foto de la hoja de reporte", type=["jpg", "jpeg", "png"], key="foto")
 
 if foto_reporte is not None:
     imagen = Image.open(foto_reporte)
-    st.image(imagen, caption="Vista previa del reporte", width=350)
+    st.image(imagen, caption="Vista previa de la hoja de reporte física", width=350)
+
     api_key_env = os.environ.get("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", "")
-    id_foto = f"{foto_reporte.name}-{foto_reporte.size}"
-    if not (GENAI_AVAILABLE and api_key_env):
+
+    if GENAI_AVAILABLE and api_key_env:
+        if st.button("🤖 Analizar Foto y Llenar Datos Automáticamente con IA"):
+            with st.spinner("Analizando reporte físico con IA..."):
+                prompt_text = (
+                    "Analiza la foto del reporte impreso o manuscrito. "
+                    "Devuelve UNICAMENTE un JSON estricto sin comillas de bloque markdown con este formato: "
+                    '{"folio_inicial": 0, "folio_final": 0, "folio_sin_desprender": 0, '
+                    '"cancelados": 0, "perdidos": 0, "gastos_especiales": 0.0, '
+                    '"gastos_generales": 0.0, "elaboro": "", "recibe": ""}'
+                )
+
+                texto_res = None
+                try:
+                    # Intento 1: SDK Nuevo
+                    from google import genai
+                    client = genai.Client(api_key=api_key_env)
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=[prompt_text, imagen]
+                    )
+                    texto_res = (response.text or "").strip()
+                except Exception:
+                    try:
+                        # Intento 2: SDK Legacy
+                        import google.generativeai as genai_legacy
+                        genai_legacy.configure(api_key=api_key_env)
+                        model_legacy = genai_legacy.GenerativeModel("gemini-2.5-flash")
+                        response_legacy = model_legacy.generate_content([prompt_text, imagen])
+                        texto_res = (response_legacy.text or "").strip()
+                    except Exception as err:
+                        st.error(f"❌ Error al conectar con la IA: {err}")
+
+                # CORREGIDO: el procesamiento de la respuesta va DENTRO del botón,
+                # antes estaba fuera y nunca se ejecutaba.
+                if texto_res:
+                    try:
+                        clean_json = texto_res.replace("```json", "").replace("```", "").strip()
+                        datos_ia = json.loads(clean_json)
+
+                        # Asignación segura a variables de estado (los campos usan estas llaves)
+                        st.session_state.f_ini_val = int(datos_ia.get("folio_inicial", 0) or 0)
+                        st.session_state.f_fin_val = int(datos_ia.get("folio_final", 0) or 0)
+                        st.session_state.f_sin_val = int(datos_ia.get("folio_sin_desprender", 0) or 0)
+                        st.session_state.f_can_val = int(datos_ia.get("cancelados", 0) or 0)
+                        st.session_state.f_per_val = int(datos_ia.get("perdidos", 0) or 0)
+                        st.session_state.g_esp_val = float(datos_ia.get("gastos_especiales", 0.0) or 0.0)
+                        st.session_state.g_gen_val = float(datos_ia.get("gastos_generales", 0.0) or 0.0)
+                        st.session_state.elaboro_val = str(datos_ia.get("elaboro", "") or "")
+                        st.session_state.recibe_val = str(datos_ia.get("recibe", "") or "")
+
+                        st.success("✨ ¡Datos leídos de la imagen e insertados en los campos!")
+                        st.rerun()
+                    except Exception as parse_err:
+                        st.warning(f"⚠️ No se pudo procesar la respuesta de la IA: {parse_err}")
+    elif not api_key_env:
         st.caption("ℹ️ Sin clave de IA configurada: llena los campos a mano.")
-    elif st.session_state.get("foto_analizada") != id_foto:
-        # ANÁLISIS AUTOMÁTICO: en cuanto llega una foto nueva se lee y se llena el reporte.
-        with st.spinner("🤖 Analizando la foto y llenando el reporte..."):
-            try:
-                llenar_desde_ia(analizar_foto(imagen, api_key_env))
-                st.session_state.foto_analizada = id_foto
-                st.rerun()
-            except Exception as err:
-                st.session_state.foto_analizada = id_foto
-                st.error(f"❌ No se pudo leer la foto, llena los datos a mano: {err}")
-    else:
-        st.success("✨ Reporte llenado con los datos de la foto. Revisa antes de guardar.")
-        if st.button("🔄 Volver a analizar la foto"):
-            st.session_state.foto_analizada = None
-            st.rerun()
 
 st.markdown("---")
 st.markdown("### 📝 2. Captura / Verificación de Datos del Reporte")
 
-# Sin st.form: así los cálculos se actualizan en vivo mientras escribes.
-sucursal_sel = st.selectbox("Sitio / Unidad", SUCURSALES_LISTA, key="select_sitio", on_change=actualizar_costo_sucursal)
+# CORREGIDO: la sucursal va FUERA del formulario para que el costo se actualice
+# en cuanto la eliges (dentro de un form el on_change no se dispara hasta enviar).
+sucursal_sel = st.selectbox(
+    "Sitio / Unidad",
+    SUCURSALES_LISTA,
+    key="select_sitio",
+    on_change=actualizar_costo_sucursal
+)
 
-col_f1, col_f2, col_f3, col_f4 = st.columns(4)
-with col_f1:
-    fecha_rep = st.date_input("Fecha del reporte", key="fecha_val")
-with col_f2:
-    hora_ini = st.time_input("Horario: inicio", key="hora_ini_val")
-with col_f3:
-    hora_fin = st.time_input("Horario: fin", key="hora_fin_val")
-with col_f4:
-    costo_boleto = st.number_input("Costo por Boleto ($ MXN)", step=1, key="costo_boleto_val")
-supervisor_nombre = st.session_state.usuario_autenticado
+# FORMULARIO CON CAMPOS CONECTADOS POR LLAVE (key=) AL SESSION_STATE.
+# CORREGIDO: antes usaban value= y por eso no se podía escribir ni se llenaban con la IA.
+with st.form("form_reporte_supervisor"):
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        fecha_rep = st.date_input("Fecha de Evento / Operación", value=date.today())
+        hora_ini = st.time_input("Horario: inicio", value=time(8, 0))
+        hora_fin = st.time_input("Horario: fin", value=time(22, 0))
+    with col_f2:
+        costo_boleto = st.number_input("Costo por Boleto ($ MXN)", step=1, key="costo_boleto_val")
+        supervisor_nombre = st.session_state.usuario_autenticado
 
-st.markdown("#### 🎟️ Control de Folios y Boletos")
-c_fol1, c_fol2, c_fol3 = st.columns(3)
-with c_fol1:
-    f_ini = st.number_input("Folio Inicial", step=1, key="f_ini_val")
-    f_fin = st.number_input("Folio Final", step=1, key="f_fin_val")
-with c_fol2:
-    f_sin = st.number_input("Folios sin Desprender", step=1, key="f_sin_val")
-    f_can = st.number_input("Boletos Cancelados", step=1, key="f_can_val")
-with c_fol3:
-    f_per = st.number_input("Boletos Perdidos", step=1, key="f_per_val")
+    st.markdown("#### 🎟️ Control de Folios y Boletos")
+    c_fol1, c_fol2, c_fol3 = st.columns(3)
+    with c_fol1:
+        f_ini = st.number_input("Folio Inicial", step=1, key="f_ini_val")
+        f_fin = st.number_input("Folio Final", step=1, key="f_fin_val")
+    with c_fol2:
+        f_sin = st.number_input("Folio sin Desprender", step=1, key="f_sin_val")
+        f_can = st.number_input("Boletos Cancelados", step=1, key="f_can_val")
+    with c_fol3:
+        f_per = st.number_input("Boletos Perdidos", step=1, key="f_per_val")
 
-# --- CÁLCULO (se recalcula en vivo) ---
-folios_usados = max(0, int(f_fin) - int(f_ini) + 1) if f_fin or f_ini else 0
-boletos = max(0, folios_usados - int(f_sin) - int(f_can) - int(f_per))
-ingreso = boletos * float(costo_boleto)
+    st.caption("Boletos = (Folio Final − Folio Inicial) + 1 − sin desprender − cancelados − perdidos. "
+               "Ingreso = Boletos × Costo. Neto = Ingreso − Gastos de operación. El cálculo se muestra al guardar.")
 
-st.markdown("#### 💸 Gastos de Operación")
-col_g1, col_g2 = st.columns(2)
-with col_g1:
-    g_esp = st.number_input("Gastos Especiales ($ MXN)", step=5.0, key="g_esp_val")
-with col_g2:
-    g_gen = st.number_input("Gastos Generales / Nómina ($ MXN)", step=5.0, key="g_gen_val")
+    st.markdown("#### 💸 Gastos de Operación")
+    col_g1, col_g2 = st.columns(2)
+    with col_g1:
+        g_esp = st.number_input("Gastos Especiales ($ MXN)", step=5.0, key="g_esp_val")
+    with col_g2:
+        g_gen = st.number_input("Gastos Generales / Nómina ($ MXN)", step=5.0, key="g_gen_val")
+
+    st.markdown("#### ✍️ Firmas y Control")
+    col_firm1, col_firm2 = st.columns(2)
+    with col_firm1:
+        elaboro_txt = st.text_input("Elaboró", key="elaboro_val")
+    with col_firm2:
+        recibe_txt = st.text_input("Recibe", key="recibe_val")
+
+    btn_guardar_reporte = st.form_submit_button("💾 Guardar y Finalizar Reporte")
+
+    if btn_guardar_reporte:
+        if sucursal_sel == "-- Selecciona o busca la sucursal --":
+            st.error("❌ Por favor selecciona una sucursal válida.")
+        else:
+            tot_entregados = max(0, (f_fin - f_ini) + 1 - f_sin)
+  
