@@ -9,9 +9,7 @@ import pandas as pd
 import streamlit as st
 from PIL import Image
 
-# =========================================================================
-# RUTAS ABSOLUTAS SEGURAS (Evita pérdida de datos en Streamlit Cloud)
-# =========================================================================
+# Rutas fijas para Streamlit Cloud
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, "reportes_clubpark.json")
 FOTOS_DIR = os.path.join(BASE_DIR, "fotos_reportes")
@@ -38,7 +36,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- ALMACENAMIENTO PERMANENTE ---
+# --- FUNCIONES DE ALMACENAMIENTO ---
 def guardar_imagen_optimizada(archivo_subido, sucursal, fecha_str):
     try:
         img = Image.open(archivo_subido)
@@ -94,7 +92,7 @@ def existe_reporte_previo(sucursal, fecha_str):
             return True
     return False
 
-# Inicializar sesión sincronizada con disco
+# Inicializar sesión
 if "registros" not in st.session_state:
     st.session_state.registros = cargar_registros_guardados()
 
@@ -188,13 +186,13 @@ st.sidebar.info(
 es_contador = (st.session_state.rol == "Contador Auditor")
 
 # =========================================================================
-# PANEL EXCLUSIVO: CONTADOR AUDITOR (ADMINISTRACIÓN TOTAL, REPORTES Y FOTOS)
+# PANEL EXCLUSIVO: CONTADOR AUDITOR
 # =========================================================================
 if es_contador:
     st.markdown("---")
     st.markdown("## 🔍 Herramientas Exclusivas del Contador Auditor")
 
-    # Recordatorio WhatsApp
+    # Recordatorios WhatsApp
     with st.expander("📲 Enviar Recordatorio de Reportes Faltantes por WhatsApp", expanded=False):
         st.markdown("### 🔔 Control de Reportes Faltantes a Supervisores")
         fecha_revision = st.date_input("Selecciona la fecha a revisar:", value=date.today(), key="fecha_rev_contador")
@@ -226,7 +224,7 @@ if es_contador:
             else:
                 st.success("✅ ¡Víctor Manuel ha completado todos sus reportes!")
 
-    # Visor de Fotos e Inspección
+    # Visor de Fotos para Auditoría
     with st.expander("🖼️ Galería e Inspección de Fotografías de Reportes", expanded=False):
         reportes_con_foto = [r for r in st.session_state.registros if r.get("foto_path")]
         if not reportes_con_foto:
@@ -236,10 +234,14 @@ if es_contador:
                 f"{r.get('Fecha')} | {r.get('Sitio / Unidad')} | Elaboró: {r.get('Elaboró', 'N/A')}"
                 for r in reportes_con_foto
             ]
-            foto_sel_idx = st.selectbox("Selecciona un reporte para visualizar su fotografía física:", range(len(opciones_fotos)), format_func=lambda x: opciones_fotos[x])
+            foto_sel_idx = st.selectbox(
+                "Selecciona un reporte para visualizar su fotografía física:",
+                range(len(opciones_fotos)),
+                format_func=lambda x: opciones_fotos[x]
+            )
             rep_foto = reportes_con_foto[foto_sel_idx]
             ruta_img = rep_foto.get("foto_path")
-            
+
             c_fot1, c_fot2 = st.columns([1, 2])
             with c_fot1:
                 st.write(f"**Sucursal:** {rep_foto.get('Sitio / Unidad')}")
@@ -250,9 +252,9 @@ if es_contador:
                 if ruta_img and os.path.exists(ruta_img):
                     st.image(ruta_img, caption=f"Reporte Físico: {rep_foto.get('Sitio / Unidad')} ({rep_foto.get('Fecha')})", use_column_width=True)
                 else:
-                    st.error("⚠️ El archivo de la imagen no se encontró en el disco.")
+                    st.error("⚠️ El archivo de imagen no se encuentra en el disco.")
 
-    # Administración, Eliminación de Reportes y Fotos Huérfanas
+    # Administración y Eliminación
     with st.expander("🗑️ Gestión, Auditoría y Eliminación de Reportes / Limpieza", expanded=False):
         tab_admin1, tab_admin2, tab_admin3 = st.tabs(["Eliminar Reporte Individual", "Limpiar Fotos Huérfanas", "⚠️ Borrado Masivo Total"])
 
@@ -442,4 +444,9 @@ with col_m2:
 with col_m3:
     st.metric("Total Gastos / Nómina", f"${total_gastos_calc:,.2f} MXN")
 with col_m4:
-    st.metric("Ingreso N
+    st.metric("Ingreso Neto", f"${ingreso_neto_calc:,.2f} MXN", delta=f"{margen_calc:.1f}% Margen")
+
+st.info(f"**Rentabilidad Preliminar Estimada:** {rentabilidad_calc}")
+
+# --- VALIDACIONES Y BOTÓN DE GUARDADO ---
+ya_existe = existe_reporte_previo(su
