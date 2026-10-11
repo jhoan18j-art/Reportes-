@@ -39,13 +39,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================================================================
-# GESTIÓN SEGURA DE CREDENCIALES (Protección vía st.secrets)
+# GESTIÓN SEGURA DE CREDENCIALES (st.secrets o respaldo local)
 # =========================================================================
 def obtener_credenciales():
-    """
-    Obtiene contraseñas de st.secrets si están configuradas en Streamlit Cloud.
-    De lo contrario, usa valores locales de respaldo.
-    """
     try:
         if "usuarios" in st.secrets:
             return {
@@ -63,10 +59,12 @@ def obtener_credenciales():
     }
 
 # =========================================================================
-# FUNCIONES DE ALMACENAMIENTO Y CÁLCULOS
+# FUNCIONES DE ALMACENAMIENTO Y PERSISTENCIA
 # =========================================================================
 def guardar_imagen_optimizada(archivo_subido, sucursal, fecha_str):
     try:
+        # Resetear puntero de lectura para evitar error de archivo vacío
+        archivo_subido.seek(0)
         img = Image.open(archivo_subido)
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
@@ -99,7 +97,7 @@ def guardar_registros_permanentes(registros):
             json.dump(registros, f, ensure_ascii=False, indent=4)
         return True
     except Exception as e:
-        st.error(f"Error al escribir en la base de datos: {e}")
+        st.error(f"Error al guardar datos en disco: {e}")
         return False
 
 def evaluar_rentabilidad(margen):
@@ -120,7 +118,7 @@ def existe_reporte_previo(sucursal, fecha_str):
             return True
     return False
 
-# Inicializar sesión sincronizada con archivo físico
+# Inicializar sesión
 if "registros" not in st.session_state:
     st.session_state.registros = cargar_registros_guardados()
 
@@ -142,7 +140,7 @@ if "usuario_autenticado" not in st.session_state:
     st.session_state.rol = None
 
 # =========================================================================
-# PANTALLA DE ACCESO / LOGIN
+# LOGIN / CONTROL DE ACCESO
 # =========================================================================
 if st.session_state.usuario_autenticado is None:
     col_l1, col_l2, col_l3 = st.columns([1, 2, 1])
@@ -167,14 +165,14 @@ if st.session_state.usuario_autenticado is None:
                 if nombre_usuario in credenciales and password == credenciales[nombre_usuario]["pass"]:
                     st.session_state.usuario_autenticado = nombre_usuario
                     st.session_state.rol = credenciales[nombre_usuario]["rol"]
-                    st.success("Acceso concedido.")
+                    st.success("Acceso autorizado.")
                     st.rerun()
                 else:
                     st.error("❌ Contraseña incorrecta o usuario no seleccionado.")
     st.stop()
 
 # =========================================================================
-# ENCABEZADO Y BARRA LATERAL
+# BARRA SUPERIOR Y LATERAL
 # =========================================================================
 col_logo, col_titulo = st.columns([1, 4])
 with col_logo:
@@ -194,24 +192,24 @@ if st.sidebar.button("🚪 Cerrar Sesión"):
     st.rerun()
 
 st.sidebar.markdown("---")
-fotos_existentes = [f for f in os.listdir(FOTOS_DIR) if not f.startswith('.')] if os.path.exists(FOTOS_DIR) else []
+archivos_fisicos_disco = [f for f in os.listdir(FOTOS_DIR) if not f.startswith('.')] if os.path.exists(FOTOS_DIR) else []
 st.sidebar.info(
     f"**Usuario:** {st.session_state.usuario_autenticado}\n\n"
     f"**Rol:** {st.session_state.rol}\n\n"
     f"**Reportes Guardados:** {len(st.session_state.registros)}\n\n"
-    f"**Fotos en Servidor:** {len(fotos_existentes)}"
+    f"**Archivos en Carpeta Fotos:** {len(archivos_fisicos_disco)}"
 )
 
 es_contador = (st.session_state.rol == "Contador Auditor")
 
 # =========================================================================
-# PANEL EXCLUSIVO: CONTADOR AUDITOR
+# PANEL EXCLUSIVO: CONTADOR AUDITOR (INVESTIGACIÓN Y LIMPIEZA DE FOTOS)
 # =========================================================================
 if es_contador:
     st.markdown("---")
     st.markdown("## 🔍 Herramientas Exclusivas del Contador Auditor")
 
-    # Recordatorio WhatsApp
+    # WhatsApp
     with st.expander("📲 Enviar Recordatorio de Reportes Faltantes por WhatsApp", expanded=False):
         st.markdown("### 🔔 Control de Reportes Faltantes a Supervisores")
         fecha_revision = st.date_input("Selecciona la fecha a revisar:", value=date.today(), key="fecha_rev_contador")
@@ -243,136 +241,101 @@ if es_contador:
             else:
                 st.success("✅ ¡Víctor Manuel ha completado todos sus reportes!")
 
-    # Visor de Fotos e Inspección
-    with st.expander("🖼️ Galería e Inspección de Fotografías de Reportes", expanded=False):
-        reportes_con_foto = [r for r in st.session_state.registros if r.get("foto_path")]
-        if not reportes_con_foto:
-            st.info("No hay reportes con fotografías adjuntas registradas.")
-        else:
-            opciones_fotos = [
-                f"{r.get('Fecha')} | {r.get('Sitio / Unidad')} | Elaboró: {r.get('Elaboró', 'N/A')}"
-                for r in reportes_con_foto
-            ]
-            foto_sel_idx = st.selectbox(
-                "Selecciona un reporte para visualizar su fotografía física:",
-                range(len(opciones_fotos)),
-                format_func=lambda x: opciones_fotos[x]
-            )
-            rep_foto = reportes_con_foto[foto_sel_idx]
-            ruta_img = rep_foto.get("foto_path")
+    # Explorador directo de las fotos en disco (Resuelve el misterio de las 3 fotos)
+    with st.expander("📂 Explorador Físico de Archivos en Disco (fotos_reportes)", expanded=False):
+        st.markdown("### 🗂️ Archivos físicos encontrados en la carpeta del servidor:")
+        if archivos_fisicos_disco:
+            st.info(f"Se encontraron **{len(archivos_fisicos_disco)} archivo(s)** dentro de `fotos_reportes`.")
+            for nombre_arch in archivos_fisicos_disco:
+                ruta_arch = os.path.join(FOTOS_DIR, nombre_arch)
+                tamano_kb = os.path.getsize(ruta_arch) / 1024 if os.path.exists(ruta_arch) else 0
 
-            c_fot1, c_fot2 = st.columns([1, 2])
-            with c_fot1:
-                st.write(f"**Sucursal:** {rep_foto.get('Sitio / Unidad')}")
-                st.write(f"**Fecha:** {rep_foto.get('Fecha')}")
-                st.write(f"**Folios:** {rep_foto.get('Folio Inicial')} al {rep_foto.get('Folio Final')}")
-                st.write(f"**Ingreso Neto:** ${rep_foto.get('Ingreso Neto', 0):,.2f} MXN")
-            with c_fot2:
-                if ruta_img and os.path.exists(ruta_img):
-                    st.image(ruta_img, caption=f"Reporte Físico: {rep_foto.get('Sitio / Unidad')} ({rep_foto.get('Fecha')})", use_column_width=True)
-                else:
-                    st.error("⚠️ El archivo de la imagen no se encontró en el disco.")
-
-    # Administración, Eliminación de Reportes y Fotos Huérfanas
-    with st.expander("🗑️ Gestión, Auditoría y Eliminación de Reportes / Limpieza", expanded=False):
-        tab_admin1, tab_admin2, tab_admin3 = st.tabs(["Eliminar Reporte Individual", "Limpiar Fotos Huérfanas", "⚠️ Borrado Masivo Total"])
-
-        with tab_admin1:
-            if st.session_state.registros:
-                opciones_borrar = [
-                    f"ID #{i} | {r.get('Fecha')} | {r.get('Sitio / Unidad')} | Folios: {r.get('Folio Inicial')}-{r.get('Folio Final')} | Neto: ${r.get('Ingreso Neto', 0):,.2f}"
-                    for i, r in enumerate(st.session_state.registros)
-                ]
-                seleccion_eliminar = st.selectbox("Selecciona reporte a inspeccionar o eliminar:", opciones_borrar, key="sel_eliminar_individual")
-                idx_eliminar = int(seleccion_eliminar.split(" | ")[0].replace("ID #", ""))
-                reporte_sel = st.session_state.registros[idx_eliminar]
-
-                col_inf1, col_inf2 = st.columns([2, 1])
-                with col_inf1:
-                    st.json(reporte_sel)
-                with col_inf2:
-                    if reporte_sel.get("foto_path") and os.path.exists(reporte_sel["foto_path"]):
-                        st.image(reporte_sel["foto_path"], caption="Fotografía física", width=250)
-                    else:
-                        st.caption("Sin fotografía adjunta.")
-
-                if st.button("🗑️ Eliminar Este Reporte", key="btn_del_single"):
-                    foto_ruta = reporte_sel.get("foto_path")
-                    if foto_ruta and os.path.exists(foto_ruta):
+                c_arch1, c_arch2, c_arch3 = st.columns([2, 1, 1])
+                with c_arch1:
+                    st.write(f"📄 **{nombre_arch}** ({tamano_kb:.1f} KB)")
+                with c_arch2:
+                    try:
+                        st.image(ruta_arch, width=120)
+                    except Exception:
+                        st.caption("No es imagen válida o dañada.")
+                with c_arch3:
+                    if st.button("🗑️ Eliminar de Disco", key=f"del_disco_{nombre_arch}"):
                         try:
-                            os.remove(foto_ruta)
-                        except Exception:
-                            pass
-                    st.session_state.registros.pop(idx_eliminar)
-                    guardar_registros_permanentes(st.session_state.registros)
-                    st.success("✅ Reporte eliminado correctamente.")
-                    st.rerun()
-            else:
-                st.info("No hay reportes registrados.")
+                            os.remove(ruta_arch)
+                            st.success(f"Archivo {nombre_arch} eliminado.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al borrar: {e}")
 
-        with tab_admin2:
-            st.markdown("#### 🧹 Eliminar fotos que no están asociadas a ningún reporte")
-            fotos_en_uso = {r.get("foto_path") for r in st.session_state.registros if r.get("foto_path")}
-            todas_fotos = [os.path.join(FOTOS_DIR, f) for f in os.listdir(FOTOS_DIR) if not f.startswith('.')]
-            fotos_huerfanas = [f for f in todas_fotos if f not in fotos_en_uso]
-
-            st.write(f"**Fotos totales en disco:** `{len(todas_fotos)}` | **Fotos huérfanas:** `{len(fotos_huerfanas)}`")
-
-            if fotos_huerfanas:
-                st.warning(f"Se encontraron {len(fotos_huerfanas)} fotos huérfanas en el servidor.")
-                if st.button("🧹 Eliminar Todas las Fotos Huérfanas", key="btn_limpiar_huerfanas"):
-                    for f in fotos_huerfanas:
-                        try:
-                            os.remove(f)
-                        except Exception:
-                            pass
-                    st.success("✅ Fotos huérfanas eliminadas del servidor.")
-                    st.rerun()
-            else:
-                st.success("✅ No hay fotos huérfanas. Todas las fotos corresponden a un reporte activo.")
-
-        with tab_admin3:
-            st.error("🚨 ZONA DE ALTO RIESGO: BORRADO COMPLETO DE BASE DE DATOS")
-            st.markdown("Esta opción vaciará **TODOS** los reportes y fotos del servidor de forma definitiva.")
-            confirmar_borrado = st.checkbox("Confirmo que deseo vaciar todos los reportes y fotos", key="chk_borrado_total")
-            if st.button("💣 Borrar Absolutamente Todo", disabled=not confirmar_borrado):
-                st.session_state.registros = []
-                guardar_registros_permanentes([])
-                if os.path.exists(FOTOS_DIR):
-                    for arch in os.listdir(FOTOS_DIR):
-                        r = os.path.join(FOTOS_DIR, arch)
-                        try:
-                            if os.path.isfile(r):
-                                os.remove(r)
-                        except Exception:
-                            pass
-                st.success("💥 Base de datos y galería vaciadas por completo.")
+            st.markdown("---")
+            if st.button("🧹 Purgar TODOS los archivos de la carpeta fotos_reportes", key="btn_purgar_todas_fotos"):
+                for arch in archivos_fisicos_disco:
+                    try:
+                        os.remove(os.path.join(FOTOS_DIR, arch))
+                    except Exception:
+                        pass
+                st.success("Carpeta de fotos limpiada completamente.")
                 st.rerun()
+        else:
+            st.success("La carpeta `fotos_reportes` está completamente limpia (0 archivos).")
+
+    # Auditoría y Eliminación de Reportes
+    with st.expander("🗑️ Administración y Eliminación de Reportes Guardados", expanded=False):
+        if st.session_state.registros:
+            opciones_borrar = [
+                f"ID #{i} | {r.get('Fecha')} | {r.get('Sitio / Unidad')} | Neto: ${r.get('Ingreso Neto', 0):,.2f}"
+                for i, r in enumerate(st.session_state.registros)
+            ]
+            seleccion_eliminar = st.selectbox("Selecciona reporte a inspeccionar o eliminar:", opciones_borrar, key="sel_eliminar_individual")
+            idx_eliminar = int(seleccion_eliminar.split(" | ")[0].replace("ID #", ""))
+            reporte_sel = st.session_state.registros[idx_eliminar]
+
+            col_inf1, col_inf2 = st.columns([2, 1])
+            with col_inf1:
+                st.json(reporte_sel)
+            with col_inf2:
+                if reporte_sel.get("foto_path") and os.path.exists(reporte_sel["foto_path"]):
+                    st.image(reporte_sel["foto_path"], caption="Fotografía física", width=250)
+                else:
+                    st.caption("Sin fotografía física adjunta.")
+
+            if st.button("🗑️ Eliminar Este Reporte Individual", key="btn_del_single"):
+                foto_ruta = reporte_sel.get("foto_path")
+                if foto_ruta and os.path.exists(foto_ruta):
+                    try:
+                        os.remove(foto_ruta)
+                    except Exception:
+                        pass
+                st.session_state.registros.pop(idx_eliminar)
+                guardar_registros_permanentes(st.session_state.registros)
+                st.success("✅ Reporte eliminado.")
+                st.rerun()
+        else:
+            st.info("No hay reportes en la base de datos.")
 
 # =========================================================================
-# SECCIÓN PRINCIPAL: CAPTURA DE REPORTES EN FORMULARIO ESTABLE
+# SECCIÓN PRINCIPAL: CAPTURA DE REPORTES
 # =========================================================================
 st.markdown("---")
 if not es_contador:
     st.markdown(f"## 📋 Registro Diario de Operaciones ({st.session_state.usuario_autenticado})")
-    st.caption("🔒 Como supervisor, solo puedes capturar el día de hoy y tus reportes quedan protegidos contra sobreescritura.")
+    st.caption("🔒 Como supervisor, solo puedes capturar la fecha de hoy y tus reportes quedan protegidos contra sobreescritura.")
 else:
-    st.markdown("## 📥 Captura de Reportes (Modo Auditor)")
-    st.caption("✨ Como auditor puedes capturar fechas extemporáneas y múltiples reportes por sucursal.")
+    st.markdown("## 📥 Captura de Reportes (Modo Contador Auditor)")
+    st.caption("✨ Puedes capturar fechas extemporáneas y múltiples reportes por unidad.")
 
-# Selección previa de sucursal para determinar costo base
-sucursal_seleccionada = st.selectbox(
-    "Sucursal / Unidad a Capturar:",
+sucursal_activa = st.selectbox(
+    "Selecciona la Sucursal / Unidad:",
     SUCURSALES_LISTA,
     key="select_sucursal_activa"
 )
 
-es_ingreso_directo = sucursal_seleccionada in ["BARRANCA", "S. AZURA"]
-costo_sugerido = PRECIOS_SUCURSALES.get(sucursal_seleccionada, 40)
+es_ingreso_directo = sucursal_activa in ["BARRANCA", "S. AZURA"]
+costo_sugerido = PRECIOS_SUCURSALES.get(sucursal_activa, 40)
 
-# Formulario principal: el botón SIEMPRE está presente y visible al final
+# Formulario principal: el botón de guardado SIEMPRE está presente
 with st.form("form_captura_reporte", clear_on_submit=False):
-    st.markdown("### 📝 Datos del Turno y Operación")
+    st.markdown("### 📝 Datos de la Operación")
 
     col_f1, col_f2 = st.columns(2)
     with col_f1:
@@ -380,7 +343,7 @@ with st.form("form_captura_reporte", clear_on_submit=False):
             fecha_op = st.date_input("Fecha del Reporte:", value=date.today())
         else:
             fecha_hoy = date.today()
-            st.info(f"📅 **Fecha de Operación:** `{fecha_hoy.strftime('%d/%m/%Y')}` *(Automática por rol de Supervisor)*")
+            st.info(f"📅 **Fecha de Operación:** `{fecha_hoy.strftime('%d/%m/%Y')}` *(Automática por rol Supervisor)*")
             fecha_op = fecha_hoy
         fecha_op_str = fecha_op.strftime("%d/%m/%Y")
 
@@ -398,12 +361,12 @@ with st.form("form_captura_reporte", clear_on_submit=False):
 
     col_h1, col_h2 = st.columns(2)
     with col_h1:
-        hora_ini = st.time_input("Hora de Apertura / Inicio:", value=time(13, 0))
+        hora_ini = st.time_input("Hora de Apertura:", value=time(13, 0))
     with col_h2:
-        hora_fin = st.time_input("Hora de Cierre / Fin:", value=time(23, 0))
+        hora_fin = st.time_input("Hora de Cierre:", value=time(23, 0))
 
-    st.markdown("#### 📷 Fotografía del Reporte Físico")
-    foto = st.file_uploader("Subir foto del reporte físico (JPG / PNG):", type=["png", "jpg", "jpeg"])
+    st.markdown("#### 📷 Fotografía Física del Reporte")
+    foto = st.file_uploader("Adjuntar fotografía (JPG / PNG):", type=["png", "jpg", "jpeg"])
 
     st.markdown("#### 🎫 Control de Boletos y Folios")
     c_b1, c_b2, c_b3 = st.columns(3)
@@ -432,4 +395,52 @@ with st.form("form_captura_reporte", clear_on_submit=False):
     with c_g1:
         g_esp = st.number_input("Gastos Especiales ($ MXN):", min_value=0.0, value=0.0, step=10.0)
     with c_g2:
-        g_gen = st.number_input("Gastos Generales / Nóm
+        g_gen = st.number_input("Gastos Generales / Nómina ($ MXN):", min_value=0.0, value=0.0, step=10.0)
+
+    st.markdown("#### ✍️ Firmas de Responsabilidad")
+    c_fir1, c_fir2 = st.columns(2)
+    with c_fir1:
+        elaboro = st.text_input("Elaboró:", value=st.session_state.usuario_autenticado)
+    with c_fir2:
+        recibe = st.text_input("Recibe:", value="" if not es_contador else "Víctor (Contador)")
+
+    st.markdown("---")
+    btn_guardar_reporte = st.form_submit_button("💾 Guardar y Confirmar Reporte", use_container_width=True)
+
+# Lógica ejecutada al presionar Guardar
+if btn_guardar_reporte:
+    if sucursal_activa == "-- Selecciona o busca la sucursal --":
+        st.error("❌ Por favor selecciona una sucursal válida antes de guardar.")
+    else:
+        ya_existe = existe_reporte_previo(sucursal_activa, fecha_op_str)
+
+        if ya_existe and not es_contador:
+            st.error(
+                f"🚫 **REPORTE BLOQUEADO:** La sucursal **{sucursal_activa}** ya cuenta con un reporte registrado el día de hoy ({fecha_op_str}). "
+                "Como supervisor, los reportes están protegidos. Contacta al Contador Auditor si requieres ajustes."
+            )
+        else:
+            with st.spinner("Guardando reporte y asegurando en disco..."):
+                if es_ingreso_directo:
+                    total_boletos = 0
+                    boletos_cobrados = 0
+                    ingreso_bruto = float(f_ini)
+                else:
+                    total_boletos = max(0, (int(f_fin) - int(f_ini)) + 1) if int(f_fin) >= int(f_ini) and int(f_ini) > 0 else 0
+                    boletos_cobrados = max(0, total_boletos - int(f_sin) - int(f_can))
+                    ingreso_bruto = boletos_cobrados * float(costo_boleto)
+
+                total_gastos = float(g_esp) + float(g_gen)
+                ingreso_neto = ingreso_bruto - total_gastos
+                margen = (ingreso_neto / ingreso_bruto * 100) if ingreso_bruto > 0 else 0.0
+                rentabilidad = evaluar_rentabilidad(margen)
+
+                ruta_guardada = None
+                if foto is not None:
+                    ruta_guardada = guardar_imagen_optimizada(foto, sucursal_activa, fecha_op_str)
+
+                horario_str = f"{hora_ini.strftime('%H:%M')} a {hora_fin.strftime('%H:%M')}"
+
+                nuevo_reporte = {
+                    "Fecha": fecha_op_str,
+               
