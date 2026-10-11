@@ -42,23 +42,17 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- GESTIÓN DE ALMACENAMIENTO Y FOTOS (HASTA 1000+ FOTOS POR SEMANA) ---
+# --- FUNCIONES DE ALMACENAMIENTO PERMANENTE ---
 def guardar_imagen_optimizada(archivo_subido, sucursal, fecha_str):
-    """Comprime y guarda la imagen en disco físico para no saturar memoria RAM ni el JSON."""
     try:
         img = Image.open(archivo_subido)
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
-        
-        # Redimensionar a resolución estándar de reporte legible
         img.thumbnail((1280, 1280))
-        
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         suc_clean = "".join(c for c in sucursal if c.isalnum() or c in (' ', '_')).strip().replace(" ", "_")
         nombre_archivo = f"{fecha_str.replace('/', '-')}_{suc_clean}_{timestamp}.jpg"
         ruta_completa = os.path.join(FOTOS_DIR, nombre_archivo)
-        
-        # Guardado en calidad balanceada (150-300 KB por imagen)
         img.save(ruta_completa, "JPEG", quality=75, optimize=True)
         return ruta_completa
     except Exception as e:
@@ -289,7 +283,7 @@ if st.session_state.rol == "Contador Auditor":
             else:
                 st.error("❌ Selecciona una sucursal.")
 
-    # --- SECCIÓN EXCLUSIVA: ADMINISTRACIÓN Y ELIMINACIÓN DE REPORTES ---
+    # --- ADMINISTRACIÓN Y ELIMINACIÓN DE REPORTES ---
     st.markdown("---")
     st.markdown("### 🗑️ Administración y Eliminación de Reportes (Exclusivo Auditor)")
     if st.session_state.registros:
@@ -310,21 +304,17 @@ if st.session_state.rol == "Contador Auditor":
             else:
                 st.caption("Sin fotografía adjunta.")
 
-        col_del1, col_del2 = st.columns([1, 4])
-        with col_del1:
-            if st.button("❌ Eliminar Reporte Permanentemente", type="primary"):
-                # Eliminar foto si existe en disco
-                foto_ruta = reporte_sel.get("foto_path")
-                if foto_ruta and os.path.exists(foto_ruta):
-                    try:
-                        os.remove(foto_ruta)
-                    except Exception:
-                        pass
-                
-                st.session_state.registros.pop(idx_eliminar)
-                guardar_registros_permanentes(st.session_state.registros)
-                st.success("✅ Reporte y archivo físico eliminados correctamente.")
-                st.rerun()
+        if st.button("❌ Eliminar Reporte Permanentemente", type="primary"):
+            foto_ruta = reporte_sel.get("foto_path")
+            if foto_ruta and os.path.exists(foto_ruta):
+                try:
+                    os.remove(foto_ruta)
+                except Exception:
+                    pass
+            st.session_state.registros.pop(idx_eliminar)
+            guardar_registros_permanentes(st.session_state.registros)
+            st.success("✅ Reporte y archivo físico eliminados correctamente.")
+            st.rerun()
 
     st.markdown("---")
     st.markdown("### 📊 Base de Datos General")
@@ -335,7 +325,7 @@ if st.session_state.rol == "Contador Auditor":
         st.info("No hay reportes registrados.")
 
 # ==========================================
-# PANEL SUPERVISORES (Y MODO DE CARGA CONTADOR)
+# PANEL SUPERVISORES (Y CAPTURA CONTADOR)
 # ==========================================
 if st.session_state.rol == "Supervisor" or st.session_state.rol == "Contador Auditor":
     if st.session_state.rol == "Supervisor":
@@ -452,4 +442,15 @@ if st.session_state.rol == "Supervisor" or st.session_state.rol == "Contador Aud
     with col_m2:
         st.metric("Total de Gastos y Nómina", f"${total_gastos_calc:,.2f} MXN")
     with col_m3:
-        st.metric("Ingreso Neto",
+        st.metric("Ingreso Neto", f"${ingreso_neto_calc:,.2f} MXN", delta=f"{margen_calc:.1f}% Margen")
+    with col_m4:
+        st.metric("Rentabilidad", rentabilidad_calc)
+
+    # Validar si ya existe reporte de esa sucursal en esa fecha
+    existe_duplicado = ya_existe_reporte(sucursal, fecha_op_str)
+    es_contador = (st.session_state.rol == "Contador Auditor")
+
+    st.markdown("---")
+    
+    if existe_duplicado and not es_contador:
+        st.error(f"🚫 **REPORTE YA EXISTE:** La sucursal **{sucursal}** ya cu
