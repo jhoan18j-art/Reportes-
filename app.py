@@ -9,7 +9,9 @@ import pandas as pd
 import streamlit as st
 from PIL import Image
 
-# Rutas fijas para Streamlit Cloud
+# =========================================================================
+# RUTAS ABSOLUTAS EN DISCO (Persistencia en Streamlit Cloud)
+# =========================================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, "reportes_clubpark.json")
 FOTOS_DIR = os.path.join(BASE_DIR, "fotos_reportes")
@@ -36,7 +38,33 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- FUNCIONES DE ALMACENAMIENTO ---
+# =========================================================================
+# GESTIÓN SEGURA DE CREDENCIALES (Protección vía st.secrets)
+# =========================================================================
+def obtener_credenciales():
+    """
+    Obtiene contraseñas de st.secrets si están configuradas en Streamlit Cloud.
+    De lo contrario, usa valores locales de respaldo.
+    """
+    try:
+        if "usuarios" in st.secrets:
+            return {
+                "Víctor Manuel": {"pass": st.secrets["usuarios"].get("victor_manuel", "visor123"), "rol": "Supervisor"},
+                "José de Jesús": {"pass": st.secrets["usuarios"].get("jose_jesus", "visor123"), "rol": "Supervisor"},
+                "Víctor (Contador)": {"pass": st.secrets["usuarios"].get("contador", "contador123"), "rol": "Contador Auditor"}
+            }
+    except Exception:
+        pass
+
+    return {
+        "Víctor Manuel": {"pass": "visor123", "rol": "Supervisor"},
+        "José de Jesús": {"pass": "visor123", "rol": "Supervisor"},
+        "Víctor (Contador)": {"pass": "contador123", "rol": "Contador Auditor"}
+    }
+
+# =========================================================================
+# FUNCIONES DE ALMACENAMIENTO Y CÁLCULOS
+# =========================================================================
 def guardar_imagen_optimizada(archivo_subido, sucursal, fecha_str):
     try:
         img = Image.open(archivo_subido)
@@ -71,7 +99,7 @@ def guardar_registros_permanentes(registros):
             json.dump(registros, f, ensure_ascii=False, indent=4)
         return True
     except Exception as e:
-        st.error(f"Error al escribir en base de datos: {e}")
+        st.error(f"Error al escribir en la base de datos: {e}")
         return False
 
 def evaluar_rentabilidad(margen):
@@ -92,7 +120,7 @@ def existe_reporte_previo(sucursal, fecha_str):
             return True
     return False
 
-# Inicializar sesión
+# Inicializar sesión sincronizada con archivo físico
 if "registros" not in st.session_state:
     st.session_state.registros = cargar_registros_guardados()
 
@@ -109,19 +137,13 @@ UNIDADES_JESUS = ["PAMPAS", "RAMMA", "SUSHITTO", "BARRANCA", "CARAJILLO", "BENIN
 UNIDADES_VICTOR = ["SUMO STA", "CHEGARAY", "RYOSHI", "ENCANTO", "S. AZURA", "CHURRASCA"]
 SUCURSALES_LISTA = ["-- Selecciona o busca la sucursal --"] + list(PRECIOS_SUCURSALES.keys())
 
-def on_sucursal_change():
-    seleccion = st.session_state.get("select_sitio")
-    if seleccion in PRECIOS_SUCURSALES:
-        st.session_state["costo_boleto_input"] = PRECIOS_SUCURSALES[seleccion]
-
-if "costo_boleto_input" not in st.session_state:
-    st.session_state["costo_boleto_input"] = 40
-
 if "usuario_autenticado" not in st.session_state:
     st.session_state.usuario_autenticado = None
     st.session_state.rol = None
 
-# --- INICIO DE SESIÓN ---
+# =========================================================================
+# PANTALLA DE ACCESO / LOGIN
+# =========================================================================
 if st.session_state.usuario_autenticado is None:
     col_l1, col_l2, col_l3 = st.columns([1, 2, 1])
     with col_l2:
@@ -131,32 +153,29 @@ if st.session_state.usuario_autenticado is None:
         else:
             st.markdown("<h1 style='text-align: center;'>🚗 CLUB PARK VALET Y ESTACIONAMIENTOS</h1>", unsafe_allow_html=True)
 
-        st.markdown("<h3 style='text-align: center; color: gray;'>Control de Acceso al Sistema</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: center; color: gray;'>Control de Acceso Seguro</h3>", unsafe_allow_html=True)
 
-        nombre_usuario = st.selectbox(
-            "Selecciona tu Usuario:",
-            ["-- Selecciona --", "Víctor Manuel", "José de Jesús", "Víctor (Contador)"]
-        )
-        password = st.text_input("Contraseña de Acceso:", type="password")
+        credenciales = obtener_credenciales()
+        lista_usuarios = ["-- Selecciona --"] + list(credenciales.keys())
 
-        if st.button("🔑 Entrar al Sistema", use_container_width=True):
-            if nombre_usuario == "Víctor Manuel" and password == "visor123":
-                st.session_state.usuario_autenticado = "Víctor Manuel"
-                st.session_state.rol = "Supervisor"
-                st.rerun()
-            elif nombre_usuario == "José de Jesús" and password == "visor123":
-                st.session_state.usuario_autenticado = "José de Jesús"
-                st.session_state.rol = "Supervisor"
-                st.rerun()
-            elif nombre_usuario == "Víctor (Contador)" and password == "contador123":
-                st.session_state.usuario_autenticado = "Víctor (Contador)"
-                st.session_state.rol = "Contador Auditor"
-                st.rerun()
-            else:
-                st.error("❌ Contraseña incorrecta o usuario no seleccionado.")
+        with st.form("form_login"):
+            nombre_usuario = st.selectbox("Selecciona tu Usuario:", lista_usuarios)
+            password = st.text_input("Contraseña de Acceso:", type="password")
+            btn_login = st.form_submit_button("🔑 Entrar al Sistema", use_container_width=True)
+
+            if btn_login:
+                if nombre_usuario in credenciales and password == credenciales[nombre_usuario]["pass"]:
+                    st.session_state.usuario_autenticado = nombre_usuario
+                    st.session_state.rol = credenciales[nombre_usuario]["rol"]
+                    st.success("Acceso concedido.")
+                    st.rerun()
+                else:
+                    st.error("❌ Contraseña incorrecta o usuario no seleccionado.")
     st.stop()
 
-# --- ENCABEZADO ---
+# =========================================================================
+# ENCABEZADO Y BARRA LATERAL
+# =========================================================================
 col_logo, col_titulo = st.columns([1, 4])
 with col_logo:
     logo_path = os.path.join(BASE_DIR, "logo.png")
@@ -167,7 +186,7 @@ with col_logo:
 
 with col_titulo:
     st.title("CLUB PARK VALET Y ESTACIONAMIENTOS S.A. DE C.V.")
-    st.subheader(f"Bienvenido, {st.session_state.usuario_autenticado} ({st.session_state.rol})")
+    st.subheader(f"Usuario: {st.session_state.usuario_autenticado} | Rol: {st.session_state.rol}")
 
 if st.sidebar.button("🚪 Cerrar Sesión"):
     st.session_state.usuario_autenticado = None
@@ -192,7 +211,7 @@ if es_contador:
     st.markdown("---")
     st.markdown("## 🔍 Herramientas Exclusivas del Contador Auditor")
 
-    # Recordatorios WhatsApp
+    # Recordatorio WhatsApp
     with st.expander("📲 Enviar Recordatorio de Reportes Faltantes por WhatsApp", expanded=False):
         st.markdown("### 🔔 Control de Reportes Faltantes a Supervisores")
         fecha_revision = st.date_input("Selecciona la fecha a revisar:", value=date.today(), key="fecha_rev_contador")
@@ -224,7 +243,7 @@ if es_contador:
             else:
                 st.success("✅ ¡Víctor Manuel ha completado todos sus reportes!")
 
-    # Visor de Fotos para Auditoría
+    # Visor de Fotos e Inspección
     with st.expander("🖼️ Galería e Inspección de Fotografías de Reportes", expanded=False):
         reportes_con_foto = [r for r in st.session_state.registros if r.get("foto_path")]
         if not reportes_con_foto:
@@ -252,9 +271,9 @@ if es_contador:
                 if ruta_img and os.path.exists(ruta_img):
                     st.image(ruta_img, caption=f"Reporte Físico: {rep_foto.get('Sitio / Unidad')} ({rep_foto.get('Fecha')})", use_column_width=True)
                 else:
-                    st.error("⚠️ El archivo de imagen no se encuentra en el disco.")
+                    st.error("⚠️ El archivo de la imagen no se encontró en el disco.")
 
-    # Administración y Eliminación
+    # Administración, Eliminación de Reportes y Fotos Huérfanas
     with st.expander("🗑️ Gestión, Auditoría y Eliminación de Reportes / Limpieza", expanded=False):
         tab_admin1, tab_admin2, tab_admin3 = st.tabs(["Eliminar Reporte Individual", "Limpiar Fotos Huérfanas", "⚠️ Borrado Masivo Total"])
 
@@ -297,7 +316,7 @@ if es_contador:
             todas_fotos = [os.path.join(FOTOS_DIR, f) for f in os.listdir(FOTOS_DIR) if not f.startswith('.')]
             fotos_huerfanas = [f for f in todas_fotos if f not in fotos_en_uso]
 
-            st.write(f"**Fotos totales:** `{len(todas_fotos)}` | **Fotos huérfanas:** `{len(fotos_huerfanas)}`")
+            st.write(f"**Fotos totales en disco:** `{len(todas_fotos)}` | **Fotos huérfanas:** `{len(fotos_huerfanas)}`")
 
             if fotos_huerfanas:
                 st.warning(f"Se encontraron {len(fotos_huerfanas)} fotos huérfanas en el servidor.")
@@ -310,11 +329,11 @@ if es_contador:
                     st.success("✅ Fotos huérfanas eliminadas del servidor.")
                     st.rerun()
             else:
-                st.success("✅ No hay fotos huérfanas.")
+                st.success("✅ No hay fotos huérfanas. Todas las fotos corresponden a un reporte activo.")
 
         with tab_admin3:
             st.error("🚨 ZONA DE ALTO RIESGO: BORRADO COMPLETO DE BASE DE DATOS")
-            st.markdown("Esta opción vaciará **TODOS** los reportes y fotos del servidor.")
+            st.markdown("Esta opción vaciará **TODOS** los reportes y fotos del servidor de forma definitiva.")
             confirmar_borrado = st.checkbox("Confirmo que deseo vaciar todos los reportes y fotos", key="chk_borrado_total")
             if st.button("💣 Borrar Absolutamente Todo", disabled=not confirmar_borrado):
                 st.session_state.registros = []
@@ -331,140 +350,86 @@ if es_contador:
                 st.rerun()
 
 # =========================================================================
-# SECCIÓN PRINCIPAL: CAPTURA DE REPORTES
+# SECCIÓN PRINCIPAL: CAPTURA DE REPORTES EN FORMULARIO ESTABLE
 # =========================================================================
 st.markdown("---")
 if not es_contador:
     st.markdown(f"## 📋 Registro Diario de Operaciones ({st.session_state.usuario_autenticado})")
-    st.caption("🔒 Como supervisor, solo puedes capturar el día de hoy y tus reportes quedan protegidos.")
+    st.caption("🔒 Como supervisor, solo puedes capturar el día de hoy y tus reportes quedan protegidos contra sobreescritura.")
 else:
     st.markdown("## 📥 Captura de Reportes (Modo Auditor)")
-    st.caption("✨ Como auditor puedes capturar fechas pasadas y múltiples reportes por sucursal.")
+    st.caption("✨ Como auditor puedes capturar fechas extemporáneas y múltiples reportes por sucursal.")
 
-sucursal = st.selectbox(
-    "Sucursal / Unidad:",
+# Selección previa de sucursal para determinar costo base
+sucursal_seleccionada = st.selectbox(
+    "Sucursal / Unidad a Capturar:",
     SUCURSALES_LISTA,
-    key="select_sitio",
-    on_change=on_sucursal_change
+    key="select_sucursal_activa"
 )
 
-es_ingreso_directo = sucursal in ["BARRANCA", "S. AZURA"]
+es_ingreso_directo = sucursal_seleccionada in ["BARRANCA", "S. AZURA"]
+costo_sugerido = PRECIOS_SUCURSALES.get(sucursal_seleccionada, 40)
 
-col_f1, col_f2 = st.columns(2)
-with col_f1:
-    if es_contador:
-        fecha_op = st.date_input("Fecha del Reporte:", value=date.today(), key="fecha_op_input")
-    else:
-        fecha_hoy = date.today()
-        st.write(f"📅 **Fecha de Operación:** `{fecha_hoy.strftime('%d/%m/%Y')}` *(Automática por seguridad)*")
-        fecha_op = fecha_hoy
+# Formulario principal: el botón SIEMPRE está presente y visible al final
+with st.form("form_captura_reporte", clear_on_submit=False):
+    st.markdown("### 📝 Datos del Turno y Operación")
 
-    fecha_op_str = fecha_op.strftime("%d/%m/%Y")
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        if es_contador:
+            fecha_op = st.date_input("Fecha del Reporte:", value=date.today())
+        else:
+            fecha_hoy = date.today()
+            st.info(f"📅 **Fecha de Operación:** `{fecha_hoy.strftime('%d/%m/%Y')}` *(Automática por rol de Supervisor)*")
+            fecha_op = fecha_hoy
+        fecha_op_str = fecha_op.strftime("%d/%m/%Y")
 
-with col_f2:
+    with col_f2:
+        if es_ingreso_directo:
+            st.info("📌 En esta unidad se captura directamente el Ingreso Bruto en el Folio Inicial.")
+            costo_boleto = 0.0
+        else:
+            costo_boleto = st.number_input(
+                "Costo por Boleto ($ MXN):",
+                min_value=0.0,
+                value=float(costo_sugerido),
+                step=5.0
+            )
+
+    col_h1, col_h2 = st.columns(2)
+    with col_h1:
+        hora_ini = st.time_input("Hora de Apertura / Inicio:", value=time(13, 0))
+    with col_h2:
+        hora_fin = st.time_input("Hora de Cierre / Fin:", value=time(23, 0))
+
+    st.markdown("#### 📷 Fotografía del Reporte Físico")
+    foto = st.file_uploader("Subir foto del reporte físico (JPG / PNG):", type=["png", "jpg", "jpeg"])
+
+    st.markdown("#### 🎫 Control de Boletos y Folios")
+    c_b1, c_b2, c_b3 = st.columns(3)
+
     if es_ingreso_directo:
-        st.info("📌 En esta unidad se captura directamente el Ingreso Bruto en el campo correspondiente.")
-        costo_boleto = 0.0
+        with c_b1:
+            f_ini = st.number_input("Ingreso Bruto Directo ($ MXN):", min_value=0.0, value=0.0, step=50.0)
+            f_fin = 0
+        with c_b2:
+            f_sin = 0
+            f_can = 0
+        with c_b3:
+            f_per = 0
     else:
-        costo_boleto = st.number_input(
-            "Costo por Boleto ($ MXN):",
-            step=5,
-            key="costo_boleto_input"
-        )
+        with c_b1:
+            f_ini = st.number_input("Folio Inicial:", min_value=0, value=1, step=1)
+            f_fin = st.number_input("Folio Final:", min_value=0, value=50, step=1)
+        with c_b2:
+            f_sin = st.number_input("Boletos Sin Cobro:", min_value=0, value=0, step=1)
+            f_can = st.number_input("Boletos Cancelados:", min_value=0, value=0, step=1)
+        with c_b3:
+            f_per = st.number_input("Boletos Perdidos:", min_value=0, value=0, step=1)
 
-col_h1, col_h2 = st.columns(2)
-with col_h1:
-    hora_ini = st.time_input("Hora de Apertura / Inicio:", value=time(13, 0), key="h_ini")
-with col_h2:
-    hora_fin = st.time_input("Hora de Cierre / Fin:", value=time(23, 0), key="h_fin")
-
-with st.expander("📷 Captura o Escaneo de Reporte Físico", expanded=True):
-    foto = st.file_uploader("Subir foto del reporte físico:", type=["png", "jpg", "jpeg"], key="uploader_foto")
-    if foto:
-        st.image(foto, caption="Vista previa del reporte adjunto", width=300)
-
-st.markdown("#### 🎫 Control de Operaciones y Folios")
-c_b1, c_b2, c_b3 = st.columns(3)
-
-if es_ingreso_directo:
-    with c_b1:
-        f_ini = st.number_input("Ingreso Bruto de la Unidad ($ MXN):", min_value=0.0, step=50.0, key="input_f_ini_dir")
-        f_fin = 0
-    with c_b2:
-        f_sin = 0
-        f_can = 0
-    with c_b3:
-        f_per = 0
-    
-    total_boletos_calc = 0
-    boletos_cobrados_calc = 0
-    ingreso_bruto_calc = float(f_ini)
-else:
-    with c_b1:
-        f_ini = st.number_input("Folio Inicial:", min_value=0, step=1, key="input_f_ini")
-        f_fin = st.number_input("Folio Final:", min_value=0, step=1, key="input_f_fin")
-    with c_b2:
-        f_sin = st.number_input("Boletos Sin Cobro:", min_value=0, step=1, key="input_f_sin")
-        f_can = st.number_input("Boletos Cancelados:", min_value=0, step=1, key="input_f_can")
-    with c_b3:
-        f_per = st.number_input("Boletos Perdidos:", min_value=0, step=1, key="input_f_per")
-
-    total_boletos_calc = max(0, (int(f_fin) - int(f_ini)) + 1) if int(f_fin) >= int(f_ini) and int(f_ini) > 0 else 0
-    boletos_cobrados_calc = max(0, total_boletos_calc - int(f_sin) - int(f_can))
-    ingreso_bruto_calc = boletos_cobrados_calc * float(costo_boleto)
-
-st.markdown("#### 💵 Egresos y Gastos Operativos")
-c_g1, c_g2 = st.columns(2)
-with c_g1:
-    g_esp = st.number_input("Gastos Especiales ($ MXN):", min_value=0.0, value=0.0, step=10.0, key="input_g_esp")
-with c_g2:
-    g_gen = st.number_input("Gastos Generales o Nómina ($ MXN):", min_value=0.0, value=0.0, step=10.0, key="input_g_gen")
-
-st.markdown("#### ✍️ Firmas de Responsabilidad")
-c_fir1, c_fir2 = st.columns(2)
-with c_fir1:
-    elaboro = st.text_input("Elaboró:", value=st.session_state.usuario_autenticado, key="input_elaboro")
-with c_fir2:
-    recibe = st.text_input("Recibe:", value="" if not es_contador else "Víctor (Contador)", key="input_recibe")
-
-total_gastos_calc = float(g_esp) + float(g_gen)
-ingreso_neto_calc = ingreso_bruto_calc - total_gastos_calc
-margen_calc = (ingreso_neto_calc / ingreso_bruto_calc * 100) if ingreso_bruto_calc > 0 else 0.0
-rentabilidad_calc = evaluar_rentabilidad(margen_calc)
-
-# --- BALANCE PRELIMINAR ---
-st.markdown("---")
-st.markdown("### 📊 Balance Preliminar del Reporte")
-
-col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-with col_m1:
-    st.metric("Boletos Cobrados", f"{boletos_cobrados_calc} boletos" if not es_ingreso_directo else "Directo")
-with col_m2:
-    st.metric("Ingreso Bruto", f"${ingreso_bruto_calc:,.2f} MXN")
-with col_m3:
-    st.metric("Total Gastos / Nómina", f"${total_gastos_calc:,.2f} MXN")
-with col_m4:
-    st.metric("Ingreso Neto", f"${ingreso_neto_calc:,.2f} MXN", delta=f"{margen_calc:.1f}% Margen")
-
-st.info(f"**Rentabilidad Preliminar Estimada:** {rentabilidad_calc}")
-
-# --- VALIDACIONES Y BOTÓN DE GUARDADO ---
-ya_existe = existe_reporte_previo(sucursal, fecha_op_str)
-
-st.markdown("---")
-
-puede_guardar = True
-mensaje_advertencia = None
-
-if sucursal == "-- Selecciona o busca la sucursal --":
-    puede_guardar = False
-    mensaje_advertencia = (
-        "Selecciona una sucursal antes de guardar."
-    )
-elif ya_existe and not es_contador:
-    puede_guardar = False
-    mensaje_advertencia = (
-        f"Ya existe un reporte de {sucursal} "
-        f"para la fecha {fecha_op_str}."
-    )
-
+    st.markdown("#### 💵 Egresos y Gastos Operativos")
+    c_g1, c_g2 = st.columns(2)
+    with c_g1:
+        g_esp = st.number_input("Gastos Especiales ($ MXN):", min_value=0.0, value=0.0, step=10.0)
+    with c_g2:
+        g_gen = st.number_input("Gastos Generales / Nóm
