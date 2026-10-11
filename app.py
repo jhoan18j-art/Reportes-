@@ -427,24 +427,9 @@ with st.form("form_captura_reporte", clear_on_submit=False):
         with c_b3:
             f_per = st.number_input("Boletos Perdidos:", min_value=0, value=0, step=1)
 
-    
-st.markdown("#### 💵 Egresos y Gastos Operativos")
-
-c_g1, c_g2 = st.columns(2)
-
-with c_g1:
-    g_esp = st.number_input(
-        "Gastos Especiales ($ MXN):",
-        min_value=0.0,
-        value=0.0,
-        step=10.0
-    )
-
-with c_g2:
-    g_gen = st.number_input(
-        "Gastos Generales / Nómina ($ MXN):",
-        min_value=0.0,
-        value=0.0,
-        step=10.0
-    )
-    
+    st.markdown("#### 💵 Egresos y Gastos Operativos")
+    c_g1, c_g2 = st.columns(2)
+    with c_g1:
+        g_esp = st.number_input("Gastos Especiales ($ MXN):", min_value=0.0, value=0.0, step=10.0)
+    with c_g2:
+        g_gen = st.number_input("Gastos Generales / Nóm
