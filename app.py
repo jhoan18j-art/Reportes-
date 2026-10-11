@@ -28,7 +28,7 @@ os.makedirs(FOTOS_DIR, exist_ok=True)
 
 st.set_page_config(page_title="Club Park - Control Operativo MXN", page_icon="🚗", layout="wide")
 
-# Estilo CSS para ocultar botones +/- en inputs numéricos
+# Estilo CSS para inputs numéricos
 st.markdown("""
     <style>
         input[type=number]::-webkit-inner-spin-button,
@@ -42,7 +42,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- FUNCIONES DE ALMACENAMIENTO PERMANENTE ---
+# --- ALMACENAMIENTO PERMANENTE ---
 def guardar_imagen_optimizada(archivo_subido, sucursal, fecha_str):
     try:
         img = Image.open(archivo_subido)
@@ -56,7 +56,7 @@ def guardar_imagen_optimizada(archivo_subido, sucursal, fecha_str):
         img.save(ruta_completa, "JPEG", quality=75, optimize=True)
         return ruta_completa
     except Exception as e:
-        st.error(f"Error al procesar la imagen: {e}")
+        st.error(f"Error al procesar imagen: {e}")
         return None
 
 def cargar_registros_guardados():
@@ -179,7 +179,7 @@ st.sidebar.info(
 if st.session_state.rol == "Contador Auditor":
     st.markdown("---")
     st.markdown("## 🔍 Panel de Auditoría, Balance Financiero y Control de Eventos (Contador)")
-    st.info("Víctor, tienes privilegios exclusivos para eliminar reportes, cargar reportes repetidos del mismo día y auditar fotos.")
+    st.info("Víctor, tienes privilegios exclusivos para eliminar reportes, subir reportes extemporáneos/a destiempo y duplicados.")
 
     with st.expander("📲 Enviar Recordatorio de Reportes Faltantes por WhatsApp", expanded=False):
         st.markdown("### 🔔 Control de Reportes Faltantes a Supervisores")
@@ -283,7 +283,7 @@ if st.session_state.rol == "Contador Auditor":
             else:
                 st.error("❌ Selecciona una sucursal.")
 
-    # --- ADMINISTRACIÓN Y ELIMINACIÓN DE REPORTES ---
+    # --- ADMINISTRACIÓN Y ELIMINACIÓN ---
     st.markdown("---")
     st.markdown("### 🗑️ Administración y Eliminación de Reportes (Exclusivo Auditor)")
     if st.session_state.registros:
@@ -325,15 +325,17 @@ if st.session_state.rol == "Contador Auditor":
         st.info("No hay reportes registrados.")
 
 # ==========================================
-# PANEL SUPERVISORES (Y CAPTURA CONTADOR)
+# PANEL OPERATIVO (SUPERVISORES Y CONTADOR)
 # ==========================================
 if st.session_state.rol == "Supervisor" or st.session_state.rol == "Contador Auditor":
-    if st.session_state.rol == "Supervisor":
+    es_contador = (st.session_state.rol == "Contador Auditor")
+
+    if not es_contador:
         st.markdown("---")
         st.markdown(f"## 📋 Registro Diario de Operaciones ({st.session_state.usuario_autenticado})")
     else:
         st.markdown("---")
-        st.markdown("## 📥 Captura Directa de Operaciones (Facultad de Contador)")
+        st.markdown("## 📥 Captura Extemporánea / Regular (Facultad de Contador)")
 
     sucursal = st.selectbox(
         "Sucursal / Unidad:",
@@ -346,8 +348,15 @@ if st.session_state.rol == "Supervisor" or st.session_state.rol == "Contador Aud
 
     col_f1, col_f2 = st.columns(2)
     with col_f1:
-        fecha_op = st.date_input("Fecha:", value=date.today())
+        if es_contador:
+            fecha_op = st.date_input("Fecha del Reporte (Permitido a destiempo):", value=date.today())
+        else:
+            fecha_hoy = date.today()
+            st.write(f"📅 **Fecha de Operación (Solo Hoy):** `{fecha_hoy.strftime('%d/%m/%Y')}`")
+            fecha_op = fecha_hoy
+
         fecha_op_str = fecha_op.strftime("%d/%m/%Y")
+
     with col_f2:
         if es_ingreso_directo:
             st.info("📌 En esta unidad se captura directamente el Ingreso Bruto en el Folio Inicial.")
@@ -427,7 +436,7 @@ if st.session_state.rol == "Supervisor" or st.session_state.rol == "Contador Aud
         st.metric(
             label="🎟️ Boletos Pagados (Cobrados)",
             value=f"{boletos_cobrados_calc} boletos",
-            help="Total de folios emitidos menos cortesías y cancelaciones"
+            help="Total expedido menos boletos sin cobro y cancelados"
         )
     else:
         st.metric(
@@ -446,20 +455,8 @@ if st.session_state.rol == "Supervisor" or st.session_state.rol == "Contador Aud
     with col_m4:
         st.metric("Rentabilidad", rentabilidad_calc)
 
-    # Validar si ya existe reporte de esa sucursal en esa fecha
     existe_duplicado = ya_existe_reporte(sucursal, fecha_op_str)
-    es_contador = (st.session_state.rol == "Contador Auditor")
 
     st.markdown("---")
-    
-    
-if existe_duplicado and not es_contador:
-    st.error(
-        f"🚫 **REPORTE YA EXISTE:** "
-        f"La sucursal **{sucursal}** ya tiene un reporte registrado."
-    )
-    st.warning(
-        "No se puede registrar nuevamente este reporte."
-    )
-    st.stop()
-    
+
+    if existe_dupl
