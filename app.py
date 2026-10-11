@@ -66,6 +66,16 @@ def guardar_registros_permanentes(registros):
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(data_to_save, f, ensure_ascii=False, indent=4)
 
+def evaluar_rentabilidad(margen):
+    if margen >= 40.0:
+        return "🟢 Alta"
+    elif margen >= 15.0:
+        return "🟡 Moderada"
+    elif margen > 0.0:
+        return "🟠 Baja"
+    else:
+        return "🔴 No Rentable (Pérdida)"
+
 if "registros" not in st.session_state:
     st.session_state.registros = cargar_registros_guardados()
 
@@ -216,6 +226,8 @@ if st.session_state.rol == "Contador Auditor":
                     boletos_evt = max(0, (int(ev_fin) - int(ev_ini)) + 1)
                     bruto_evt = boletos_evt * float(ev_costo)
                     neto_evt = bruto_evt - float(ev_gastos)
+                    margen_evt = (neto_evt / bruto_evt * 100) if bruto_evt > 0 else 0.0
+                    rentabilidad_evt = evaluar_rentabilidad(margen_evt)
                     horario_evt = f"{ev_hora_ini.strftime('%H:%M')} a {ev_hora_fin.strftime('%H:%M')}"
 
                     nuevo_evento = {
@@ -232,9 +244,11 @@ if st.session_state.rol == "Contador Auditor":
                         "Boletos Cobrados": boletos_evt,
                         "Ingreso Bruto": bruto_evt,
                         "Gastos Especiales": float(ev_gastos),
-                        "Gastos Generales": 0.0,
+                        "Gastos Generales / Nómina": 0.0,
                         "Total Gastos": float(ev_gastos),
                         "Ingreso Neto": neto_evt,
+                        "Margen (%)": round(margen_evt, 2),
+                        "Rentabilidad": rentabilidad_evt,
                         "Elaboró": ev_elaboro,
                         "Recibe": ev_recibe,
                         "Tipo": "Evento Extraordinario",
@@ -297,12 +311,12 @@ else:
         with c_b3:
             f_per = st.number_input("Boletos Perdidos:", value=st.session_state.f_per_val, step=1)
 
-        st.markdown("#### 💵 Egresos / Gastos")
+        st.markdown("#### 💵 Egresos y Gastos Operativos")
         c_g1, c_g2 = st.columns(2)
         with c_g1:
             g_esp = st.number_input("Gastos Especiales ($ MXN):", value=st.session_state.g_esp_val, step=10.0)
         with c_g2:
-            g_gen = st.number_input("Gastos Generales ($ MXN):", value=st.session_state.g_gen_val, step=10.0)
+            g_gen = st.number_input("Gastos Generales o Nómina ($ MXN):", value=st.session_state.g_gen_val, step=10.0)
 
         st.markdown("#### ✍️ Firmas")
         c_fir1, c_fir2 = st.columns(2)
@@ -311,6 +325,22 @@ else:
         with c_fir2:
             recibe = st.text_input("Recibe:", value=st.session_state.recibe_val)
 
+        # Previsualización del balance en el formulario
+        boletos_total_prev = max(0, (int(f_fin) - int(f_ini)) + 1) if int(f_fin) >= int(f_ini) and int(f_ini) > 0 else 0
+        boletos_cobrados_prev = max(0, boletos_total_prev - int(f_sin) - int(f_can))
+        ingreso_bruto_prev = boletos_cobrados_prev * float(costo_boleto)
+        total_gastos_prev = float(g_esp) + float(g_gen)
+        ingreso_neto_prev = ingreso_bruto_prev - total_gastos_prev
+        margen_prev = (ingreso_neto_prev / ingreso_bruto_prev * 100) if ingreso_bruto_prev > 0 else 0.0
+
+        st.markdown("---")
+        st.markdown("#### 📈 Balance Preliminar del Reporte")
+        m_c1, m_c2, m_c3, m_c4 = st.columns(4)
+        m_c1.metric("Ingreso Bruto", f"${ingreso_bruto_prev:,.2f} MXN")
+        m_c2.metric("Gastos Totales", f"${total_gastos_prev:,.2f} MXN")
+        m_c3.metric("Ingreso Neto", f"${ingreso_neto_prev:,.2f} MXN")
+        m_c4.metric("Rentabilidad", evaluar_rentabilidad(margen_prev), f"{margen_prev:.1f}%")
+
         if st.form_submit_button("💾 Guardar Reporte Diario"):
             if sucursal != "-- Selecciona o busca la sucursal --":
                 total_boletos = max(0, (int(f_fin) - int(f_ini)) + 1)
@@ -318,6 +348,8 @@ else:
                 bruto = boletos_cobrados * float(costo_boleto)
                 total_gastos = float(g_esp) + float(g_gen)
                 neto = bruto - total_gastos
+                margen = (neto / bruto * 100) if bruto > 0 else 0.0
+                rentabilidad = evaluar_rentabilidad(margen)
 
                 nuevo_registro = {
                     "Fecha": fecha_op.strftime("%d/%m/%Y"),
@@ -333,9 +365,11 @@ else:
                     "Boletos Cobrados": boletos_cobrados,
                     "Ingreso Bruto": bruto,
                     "Gastos Especiales": float(g_esp),
-                    "Gastos Generales": float(g_gen),
+                    "Gastos Generales / Nómina": float(g_gen),
                     "Total Gastos": total_gastos,
                     "Ingreso Neto": neto,
+                    "Margen (%)": round(margen, 2),
+                    "Rentabilidad": rentabilidad,
                     "Elaboró": elaboro,
                     "Recibe": recibe,
                     "Tipo": "Operación Regular",
