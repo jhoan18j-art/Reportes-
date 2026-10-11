@@ -380,7 +380,8 @@ with st.form("form_reporte_supervisor"):
         g_esp = st.number_input("Gastos Especiales ($ MXN)"
     with col_g2:
         g_gen = st.number_input("Gastos Generales / Nómina ($ MXN)"
-        with col_ st.numer_inpit(" Gastos Especiales + Gastos Generales -"Ingreso = Boletos × Costo. Neto = Ingreso − Gastos de operación")
+    with col_g3:
+        g_gen = st.numer_inpit(" Gastos Especiales + Gastos Generales -"Ingreso = Boletos × Costo. Neto = Ingreso − Gastos de operación")
 
     st.markdown("#### ✍️ Firmas y Control")
     col_firm1, col_firm2 = st.columns(2)
