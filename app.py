@@ -1,4 +1,5 @@
 import base64
+import base64
 import io
 import json
 import os
@@ -92,22 +93,14 @@ UNIDADES_JESUS = ["PAMPAS", "RAMMA", "SUSHITTO", "BARRANCA", "CARAJILLO", "BENIN
 UNIDADES_VICTOR = ["SUMO STA", "CHEGARAY", "RYOSHI", "ENCANTO", "S. AZURA", "CHURRASCA"]
 SUCURSALES_LISTA = ["-- Selecciona o busca la sucursal --"] + list(PRECIOS_SUCURSALES.keys())
 
-# Valores iniciales de los campos del formulario
-CAMPOS_INICIALES = {
-    "f_ini_val": 0, "f_fin_val": 0, "f_sin_val": 0,
-    "f_can_val": 0, "f_per_val": 0,
-    "g_esp_val": 0.0, "g_gen_val": 0.0,
-    "elaboro_val": "", "recibe_val": "",
-    "costo_boleto_val": 40,
-}
-for k, v in CAMPOS_INICIALES.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
+# Función callback para actualizar el costo en el estado
+def on_sucursal_change():
+    seleccion = st.session_state.get("select_sitio")
+    if seleccion in PRECIOS_SUCURSALES:
+        st.session_state["costo_boleto_input"] = PRECIOS_SUCURSALES[seleccion]
 
-def actualizar_costo_sucursal():
-    sucursal_seleccionada = st.session_state.get("select_sitio")
-    if sucursal_seleccionada in PRECIOS_SUCURSALES:
-        st.session_state.costo_boleto_val = PRECIOS_SUCURSALES[sucursal_seleccionada]
+if "costo_boleto_input" not in st.session_state:
+    st.session_state["costo_boleto_input"] = 40
 
 if "usuario_autenticado" not in st.session_state:
     st.session_state.usuario_autenticado = None
@@ -230,7 +223,6 @@ if st.session_state.rol == "Contador Auditor":
         with ev_f2:
             ev_recibe = st.text_input("Recibe", value="Víctor (Contador)", key="ev_rec")
 
-        # Balance en tiempo real para eventos
         boletos_evt = max(0, (int(ev_fin) - int(ev_ini)) + 1) if int(ev_fin) >= int(ev_ini) and int(ev_ini) > 0 else 0
         bruto_evt = boletos_evt * float(ev_costo)
         neto_evt = bruto_evt - float(ev_gastos)
@@ -297,14 +289,24 @@ else:
         "Sucursal / Unidad:",
         SUCURSALES_LISTA,
         key="select_sitio",
-        on_change=actualizar_costo_sucursal
+        on_change=on_sucursal_change
     )
+
+    es_ingreso_directo = sucursal in ["BARRANCA", "S. AZURA"]
 
     col_f1, col_f2 = st.columns(2)
     with col_f1:
         fecha_op = st.date_input("Fecha:", value=date.today())
     with col_f2:
-        costo_boleto = st.number_input("Costo por Boleto ($ MXN):", value=st.session_state.costo_boleto_val, step=5, key="costo_boleto_input")
+        if es_ingreso_directo:
+            st.info("📌 En esta unidad se captura directamente el Ingreso Bruto en el Folio Inicial.")
+            costo_boleto = 0.0
+        else:
+            costo_boleto = st.number_input(
+                "Costo por Boleto ($ MXN):",
+                step=5,
+                key="costo_boleto_input"
+            )
 
     col_h1, col_h2 = st.columns(2)
     with col_h1:
@@ -317,71 +319,90 @@ else:
         if foto:
             st.image(foto, caption="Reporte Cargado", width=300)
 
-    # Entradas interactivas sin form para cálculo instantáneo
-    st.markdown("#### 🎫 Control de Boletos")
+    st.markdown("#### 🎫 Control de Operaciones y Folios")
     c_b1, c_b2, c_b3 = st.columns(3)
-    with c_b1:
-        f_ini = st.number_input("Folio Inicial:", value=st.session_state.f_ini_val, step=1, key="input_f_ini")
-        f_fin = st.number_input("Folio Final:", value=st.session_state.f_fin_val, step=1, key="input_f_fin")
-    with c_b2:
-        f_sin = st.number_input("Boletos Sin Cobro:", value=st.session_state.f_sin_val, step=1, key="input_f_sin")
-        f_can = st.number_input("Boletos Cancelados:", value=st.session_state.f_can_val, step=1, key="input_f_can")
-    with c_b3:
-        f_per = st.number_input("Boletos Perdidos:", value=st.session_state.f_per_val, step=1, key="input_f_per")
+    
+    if es_ingreso_directo:
+        with c_b1:
+            f_ini = st.number_input("Ingreso Bruto de la Unidad ($ MXN):", min_value=0.0, step=50.0, key="input_f_ini_directo")
+            f_fin = 0
+        with c_b2:
+            f_sin = 0
+            f_can = 0
+        with c_b3:
+            f_per = 0
+        
+        total_boletos_calc = 0
+        boletos_cobrados_calc = 0
+        ingreso_bruto_calc = float(f_ini)
+    else:
+        with c_b1:
+            f_ini = st.number_input("Folio Inicial:", min_value=0, step=1, key="input_f_ini")
+            f_fin = st.number_input("Folio Final:", min_value=0, step=1, key="input_f_fin")
+        with c_b2:
+            f_sin = st.number_input("Boletos Sin Cobro:", min_value=0, step=1, key="input_f_sin")
+            f_can = st.number_input("Boletos Cancelados:", min_value=0, step=1, key="input_f_can")
+        with c_b3:
+            f_per = st.number_input("Boletos Perdidos:", min_value=0, step=1, key="input_f_per")
+
+        total_boletos_calc = max(0, (int(f_fin) - int(f_ini)) + 1) if int(f_fin) >= int(f_ini) and int(f_ini) > 0 else 0
+        boletos_cobrados_calc = max(0, total_boletos_calc - int(f_sin) - int(f_can))
+        ingreso_bruto_calc = boletos_cobrados_calc * float(costo_boleto)
 
     st.markdown("#### 💵 Egresos y Gastos Operativos")
     c_g1, c_g2 = st.columns(2)
     with c_g1:
-        g_esp = st.number_input("Gastos Especiales ($ MXN):", value=st.session_state.g_esp_val, step=10.0, key="input_g_esp")
+        g_esp = st.number_input("Gastos Especiales ($ MXN):", min_value=0.0, value=0.0, step=10.0, key="input_g_esp")
     with c_g2:
-        g_gen = st.number_input("Gastos Generales o Nómina ($ MXN):", value=st.session_state.g_gen_val, step=10.0, key="input_g_gen")
+        g_gen = st.number_input("Gastos Generales o Nómina ($ MXN):", min_value=0.0, value=0.0, step=10.0, key="input_g_gen")
 
     st.markdown("#### ✍️ Firmas")
     c_fir1, c_fir2 = st.columns(2)
     with c_fir1:
         elaboro = st.text_input("Elaboró:", value=st.session_state.usuario_autenticado, key="input_elaboro")
     with c_fir2:
-        recibe = st.text_input("Recibe:", value=st.session_state.recibe_val, key="input_recibe")
+        recibe = st.text_input("Recibe:", value="", key="input_recibe")
 
     # Cálculos en tiempo real
-    total_boletos_calc = max(0, (int(f_fin) - int(f_ini)) + 1) if int(f_fin) >= int(f_ini) and int(f_ini) > 0 else 0
-    boletos_cobrados_calc = max(0, total_boletos_calc - int(f_sin) - int(f_can))
-    ingreso_bruto_calc = boletos_cobrados_calc * float(costo_boleto)
     total_gastos_calc = float(g_esp) + float(g_gen)
     ingreso_neto_calc = ingreso_bruto_calc - total_gastos_calc
     margen_calc = (ingreso_neto_calc / ingreso_bruto_calc * 100) if ingreso_bruto_calc > 0 else 0.0
     rentabilidad_calc = evaluar_rentabilidad(margen_calc)
 
-    # --- SECCIÓN DE PREVISUALIZACIÓN Y CORRECCIÓN ---
+    # --- BALANCE PRELIMINAR ---
     st.markdown("---")
     st.markdown("### 📊 Balance Preliminar del Reporte (Revisión antes de guardar)")
-    st.caption("Verifica las cifras. Puedes modificar cualquier folio o gasto arriba y el balance se actualizará automáticamente.")
+    st.caption("Verifica las cifras. Puedes modificar cualquier valor arriba y el balance se actualizará automáticamente.")
 
-    # Métrica de boletos pagados colocada arriba del ingreso bruto
-    st.metric(
-        label="🎟️ Boletos Pagados (Cobrados)",
-        value=f"{boletos_cobrados_calc} boletos",
-        help="Total expedidos menos boletos sin cobro y cancelados"
-    )
+    if not es_ingreso_directo:
+        st.metric(
+            label="🎟️ Boletos Pagados (Cobrados)",
+            value=f"{boletos_cobrados_calc} boletos",
+            help="Total de folios emitidos menos cortesías y cancelaciones"
+        )
+    else:
+        st.metric(
+            label="💼 Modalidad de Cobro",
+            value="Ingreso Directo Capturado",
+            help="Unidad configurada para recibir ingreso bruto directamente en el campo de Folio Inicial"
+        )
 
     col_m1, col_m2, col_m3, col_m4 = st.columns(4)
     with col_m1:
         st.metric("Ingreso Bruto", f"${ingreso_bruto_calc:,.2f} MXN")
     with col_m2:
-        st.metric("Total de Gastos", f"${total_gastos_calc:,.2f} MXN")
+        st.metric("Total de Gastos y Nómina", f"${total_gastos_calc:,.2f} MXN")
     with col_m3:
         st.metric("Ingreso Neto", f"${ingreso_neto_calc:,.2f} MXN", delta=f"{margen_calc:.1f}% Margen")
     with col_m4:
         st.metric("Rentabilidad", rentabilidad_calc)
 
-    # Desglose en tabla rápida para verificación
+    # Tabla de resumen
     df_revision = pd.DataFrame([{
-        "Total Boletos": total_boletos_calc,
-        "Sin Cobro / Cortesías": int(f_sin),
-        "Cancelados": int(f_can),
-        "Boletos Cobrados": boletos_cobrados_calc,
-        "Tarifa Unit.": f"${float(costo_boleto):,.2f}",
-        "Bruto": f"${ingreso_bruto_calc:,.2f}",
+        "Sucursal": sucursal,
+        "Total Boletos": total_boletos_calc if not es_ingreso_directo else "N/A",
+        "Boletos Cobrados": boletos_cobrados_calc if not es_ingreso_directo else "N/A",
+        "Ingreso Bruto": f"${ingreso_bruto_calc:,.2f}",
         "Gastos Esp.": f"${float(g_esp):,.2f}",
         "Gastos Gral./Nómina": f"${float(g_gen):,.2f}",
         "Total Gastos": f"${total_gastos_calc:,.2f}",
@@ -414,7 +435,7 @@ else:
                 "Rentabilidad": rentabilidad_calc,
                 "Elaboró": elaboro,
                 "Recibe": recibe,
-                "Tipo": "Operación Regular",
+                "Tipo": "Operación Regular" if not es_ingreso_directo else "Ingreso Directo",
                 "foto_bytes": foto.getvalue() if foto else None
             }
             st.session_state.registros.append(nuevo_registro)
@@ -423,4 +444,4 @@ else:
             st.rerun()
         else:
             st.error("❌ Por favor, selecciona una sucursal válida antes de guardar.")
-    
+            
