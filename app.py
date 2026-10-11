@@ -461,4 +461,18 @@ else:
     if st.button("💾 Guardar y Confirmar Reporte Diario", type="primary", use_container_width=True):
         if sucursal == "-- Selecciona o busca la sucursal --":
             st.error("❌ Por favor selecciona una sucursal válida antes de guardar.")
-        else
+        
+if existe_duplicado and not es_contador:
+    st.error("El reporte ya existe.")
+else:
+    if st.button("💾 Guardar y Confirmar Reporte Diario"):
+        if sucursal == "-- Selecciona o busca la sucursal --":
+            st.error("Debes seleccionar una sucursal.")
+        else:
+            ruta_guardada = None
+
+            if foto:
+                ruta_guardada = guardar_imagen_op(foto)
+
+            st.success("Fotografía guardada correctamente.")
+            
