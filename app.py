@@ -9,9 +9,12 @@ import pandas as pd
 import streamlit as st
 from PIL import Image
 
-# Rutas locales permanentes
-DB_FILE = "reportes_clubpark.json"
-FOTOS_DIR = "fotos_reportes"
+# =========================================================================
+# RUTAS ABSOLUTAS SEGURAS (Evita pérdida de datos en Streamlit Cloud)
+# =========================================================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_FILE = os.path.join(BASE_DIR, "reportes_clubpark.json")
+FOTOS_DIR = os.path.join(BASE_DIR, "fotos_reportes")
 
 os.makedirs(FOTOS_DIR, exist_ok=True)
 
@@ -65,8 +68,13 @@ def cargar_registros_guardados():
     return []
 
 def guardar_registros_permanentes(registros):
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(registros, f, ensure_ascii=False, indent=4)
+    try:
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(registros, f, ensure_ascii=False, indent=4)
+        return True
+    except Exception as e:
+        st.error(f"Error al escribir en base de datos: {e}")
+        return False
 
 def evaluar_rentabilidad(margen):
     if margen >= 40.0:
@@ -86,7 +94,7 @@ def existe_reporte_previo(sucursal, fecha_str):
             return True
     return False
 
-# Inicializar sesión
+# Inicializar sesión sincronizada con disco
 if "registros" not in st.session_state:
     st.session_state.registros = cargar_registros_guardados()
 
@@ -119,8 +127,9 @@ if "usuario_autenticado" not in st.session_state:
 if st.session_state.usuario_autenticado is None:
     col_l1, col_l2, col_l3 = st.columns([1, 2, 1])
     with col_l2:
-        if os.path.exists("logo.png"):
-            st.image("logo.png", width=400)
+        logo_path = os.path.join(BASE_DIR, "logo.png")
+        if os.path.exists(logo_path):
+            st.image(logo_path, width=400)
         else:
             st.markdown("<h1 style='text-align: center;'>🚗 CLUB PARK VALET Y ESTACIONAMIENTOS</h1>", unsafe_allow_html=True)
 
@@ -152,8 +161,9 @@ if st.session_state.usuario_autenticado is None:
 # --- ENCABEZADO ---
 col_logo, col_titulo = st.columns([1, 4])
 with col_logo:
-    if os.path.exists("logo.png"):
-        st.image("logo.png", width=250)
+    logo_path = os.path.join(BASE_DIR, "logo.png")
+    if os.path.exists(logo_path):
+        st.image(logo_path, width=250)
     else:
         st.markdown("### **CP** - Club Park")
 
@@ -178,7 +188,7 @@ st.sidebar.info(
 es_contador = (st.session_state.rol == "Contador Auditor")
 
 # =========================================================================
-# PANEL EXCLUSIVO: CONTADOR AUDITOR (ADMINISTRACIÓN TOTAL Y FOTOS HUÉRFANAS)
+# PANEL EXCLUSIVO: CONTADOR AUDITOR (ADMINISTRACIÓN TOTAL, REPORTES Y FOTOS)
 # =========================================================================
 if es_contador:
     st.markdown("---")
@@ -216,8 +226,34 @@ if es_contador:
             else:
                 st.success("✅ ¡Víctor Manuel ha completado todos sus reportes!")
 
-    # Gestión y Eliminación de Reportes / Limpieza de Fotos
-    with st.expander("🗑️ Gestión, Auditoría y Eliminación de Reportes y Fotos", expanded=False):
+    # Visor de Fotos e Inspección
+    with st.expander("🖼️ Galería e Inspección de Fotografías de Reportes", expanded=False):
+        reportes_con_foto = [r for r in st.session_state.registros if r.get("foto_path")]
+        if not reportes_con_foto:
+            st.info("No hay reportes con fotografías adjuntas registradas.")
+        else:
+            opciones_fotos = [
+                f"{r.get('Fecha')} | {r.get('Sitio / Unidad')} | Elaboró: {r.get('Elaboró', 'N/A')}"
+                for r in reportes_con_foto
+            ]
+            foto_sel_idx = st.selectbox("Selecciona un reporte para visualizar su fotografía física:", range(len(opciones_fotos)), format_func=lambda x: opciones_fotos[x])
+            rep_foto = reportes_con_foto[foto_sel_idx]
+            ruta_img = rep_foto.get("foto_path")
+            
+            c_fot1, c_fot2 = st.columns([1, 2])
+            with c_fot1:
+                st.write(f"**Sucursal:** {rep_foto.get('Sitio / Unidad')}")
+                st.write(f"**Fecha:** {rep_foto.get('Fecha')}")
+                st.write(f"**Folios:** {rep_foto.get('Folio Inicial')} al {rep_foto.get('Folio Final')}")
+                st.write(f"**Ingreso Neto:** ${rep_foto.get('Ingreso Neto', 0):,.2f} MXN")
+            with c_fot2:
+                if ruta_img and os.path.exists(ruta_img):
+                    st.image(ruta_img, caption=f"Reporte Físico: {rep_foto.get('Sitio / Unidad')} ({rep_foto.get('Fecha')})", use_column_width=True)
+                else:
+                    st.error("⚠️ El archivo de la imagen no se encontró en el disco.")
+
+    # Administración, Eliminación de Reportes y Fotos Huérfanas
+    with st.expander("🗑️ Gestión, Auditoría y Eliminación de Reportes / Limpieza", expanded=False):
         tab_admin1, tab_admin2, tab_admin3 = st.tabs(["Eliminar Reporte Individual", "Limpiar Fotos Huérfanas", "⚠️ Borrado Masivo Total"])
 
         with tab_admin1:
@@ -226,7 +262,7 @@ if es_contador:
                     f"ID #{i} | {r.get('Fecha')} | {r.get('Sitio / Unidad')} | Folios: {r.get('Folio Inicial')}-{r.get('Folio Final')} | Neto: ${r.get('Ingreso Neto', 0):,.2f}"
                     for i, r in enumerate(st.session_state.registros)
                 ]
-                seleccion_eliminar = st.selectbox("Selecciona reporte a inspeccionar o eliminar:", opciones_borrar)
+                seleccion_eliminar = st.selectbox("Selecciona reporte a inspeccionar o eliminar:", opciones_borrar, key="sel_eliminar_individual")
                 idx_eliminar = int(seleccion_eliminar.split(" | ")[0].replace("ID #", ""))
                 reporte_sel = st.session_state.registros[idx_eliminar]
 
@@ -235,11 +271,11 @@ if es_contador:
                     st.json(reporte_sel)
                 with col_inf2:
                     if reporte_sel.get("foto_path") and os.path.exists(reporte_sel["foto_path"]):
-                        st.image(reporte_sel["foto_path"], caption="Fotografía física del reporte", width=260)
+                        st.image(reporte_sel["foto_path"], caption="Fotografía física", width=250)
                     else:
                         st.caption("Sin fotografía adjunta.")
 
-                if st.button("🗑️ Eliminar Este Reporte Individual", key="btn_del_single"):
+                if st.button("🗑️ Eliminar Este Reporte", key="btn_del_single"):
                     foto_ruta = reporte_sel.get("foto_path")
                     if foto_ruta and os.path.exists(foto_ruta):
                         try:
@@ -251,7 +287,7 @@ if es_contador:
                     st.success("✅ Reporte eliminado correctamente.")
                     st.rerun()
             else:
-                st.info("No hay reportes registrados en la base de datos.")
+                st.info("No hay reportes registrados.")
 
         with tab_admin2:
             st.markdown("#### 🧹 Eliminar fotos que no están asociadas a ningún reporte")
@@ -259,12 +295,10 @@ if es_contador:
             todas_fotos = [os.path.join(FOTOS_DIR, f) for f in os.listdir(FOTOS_DIR) if not f.startswith('.')]
             fotos_huerfanas = [f for f in todas_fotos if f not in fotos_en_uso]
 
-            st.write(f"**Fotos totales en disco:** `{len(todas_fotos)}` | **Fotos huérfanas (sin reporte):** `{len(fotos_huerfanas)}`")
+            st.write(f"**Fotos totales:** `{len(todas_fotos)}` | **Fotos huérfanas:** `{len(fotos_huerfanas)}`")
 
             if fotos_huerfanas:
-                st.warning(f"Se encontraron {len(fotos_huerfanas)} fotos que quedaron guardadas sin reporte vinculado.")
-                for f_h in fotos_huerfanas[:4]:
-                    st.text(f_h)
+                st.warning(f"Se encontraron {len(fotos_huerfanas)} fotos huérfanas en el servidor.")
                 if st.button("🧹 Eliminar Todas las Fotos Huérfanas", key="btn_limpiar_huerfanas"):
                     for f in fotos_huerfanas:
                         try:
@@ -274,13 +308,13 @@ if es_contador:
                     st.success("✅ Fotos huérfanas eliminadas del servidor.")
                     st.rerun()
             else:
-                st.success("✅ No hay fotos huérfanas. Todas las fotos en disco corresponden a un reporte activo.")
+                st.success("✅ No hay fotos huérfanas.")
 
         with tab_admin3:
             st.error("🚨 ZONA DE ALTO RIESGO: BORRADO COMPLETO DE BASE DE DATOS")
-            st.markdown("Esta opción eliminará **TODOS** los reportes y **TODAS** las fotografías del servidor. Esta acción no se puede deshacer.")
-            confirmar_borrado_total = st.checkbox("Confirmo que deseo vaciar todos los reportes y fotos", key="chk_borrado_total")
-            if st.button("💣 Borrar Absolutamente Todos los Reportes y Fotos", disabled=not confirmar_borrado_total):
+            st.markdown("Esta opción vaciará **TODOS** los reportes y fotos del servidor.")
+            confirmar_borrado = st.checkbox("Confirmo que deseo vaciar todos los reportes y fotos", key="chk_borrado_total")
+            if st.button("💣 Borrar Absolutamente Todo", disabled=not confirmar_borrado):
                 st.session_state.registros = []
                 guardar_registros_permanentes([])
                 if os.path.exists(FOTOS_DIR):
@@ -291,19 +325,19 @@ if es_contador:
                                 os.remove(r)
                         except Exception:
                             pass
-                st.success("💥 Base de datos y galería de fotos vaciadas por completo.")
+                st.success("💥 Base de datos y galería vaciadas por completo.")
                 st.rerun()
 
 # =========================================================================
-# SECCIÓN PRINCIPAL: CAPTURA DE REPORTES (VALIDADA POR ROL)
+# SECCIÓN PRINCIPAL: CAPTURA DE REPORTES
 # =========================================================================
 st.markdown("---")
 if not es_contador:
     st.markdown(f"## 📋 Registro Diario de Operaciones ({st.session_state.usuario_autenticado})")
-    st.caption("🔒 Como supervisor, tus reportes quedan protegidos una vez guardados y solo puedes capturar el día de hoy.")
+    st.caption("🔒 Como supervisor, solo puedes capturar el día de hoy y tus reportes quedan protegidos.")
 else:
-    st.markdown("## 📥 Captura de Reportes (Modo Auditor: Sin Límite de Fecha ni Frecuencia)")
-    st.caption("✨ Puedes registrar reportes extemporáneos, múltiples turnos por sucursal o eventos.")
+    st.markdown("## 📥 Captura de Reportes (Modo Auditor)")
+    st.caption("✨ Como auditor puedes capturar fechas pasadas y múltiples reportes por sucursal.")
 
 sucursal = st.selectbox(
     "Sucursal / Unidad:",
@@ -317,7 +351,7 @@ es_ingreso_directo = sucursal in ["BARRANCA", "S. AZURA"]
 col_f1, col_f2 = st.columns(2)
 with col_f1:
     if es_contador:
-        fecha_op = st.date_input("Fecha del Reporte:", value=date.today())
+        fecha_op = st.date_input("Fecha del Reporte:", value=date.today(), key="fecha_op_input")
     else:
         fecha_hoy = date.today()
         st.write(f"📅 **Fecha de Operación:** `{fecha_hoy.strftime('%d/%m/%Y')}` *(Automática por seguridad)*")
@@ -338,12 +372,12 @@ with col_f2:
 
 col_h1, col_h2 = st.columns(2)
 with col_h1:
-    hora_ini = st.time_input("Hora de Apertura / Inicio:", value=time(13, 0))
+    hora_ini = st.time_input("Hora de Apertura / Inicio:", value=time(13, 0), key="h_ini")
 with col_h2:
-    hora_fin = st.time_input("Hora de Cierre / Fin:", value=time(23, 0))
+    hora_fin = st.time_input("Hora de Cierre / Fin:", value=time(23, 0), key="h_fin")
 
 with st.expander("📷 Captura o Escaneo de Reporte Físico", expanded=True):
-    foto = st.file_uploader("Subir foto del reporte físico:", type=["png", "jpg", "jpeg"])
+    foto = st.file_uploader("Subir foto del reporte físico:", type=["png", "jpg", "jpeg"], key="uploader_foto")
     if foto:
         st.image(foto, caption="Vista previa del reporte adjunto", width=300)
 
@@ -408,78 +442,4 @@ with col_m2:
 with col_m3:
     st.metric("Total Gastos / Nómina", f"${total_gastos_calc:,.2f} MXN")
 with col_m4:
-    st.metric("Ingreso Neto", f"${ingreso_neto_calc:,.2f} MXN", delta=f"{margen_calc:.1f}% Margen")
-
-st.info(f"**Rentabilidad Preliminar Estimada:** {rentabilidad_calc}")
-
-# --- VALIDACIONES Y BOTÓN ÚNICO DE GUARDADO ---
-ya_existe = existe_reporte_previo(sucursal, fecha_op_str)
-
-st.markdown("---")
-
-puede_guardar = True
-mensaje_advertencia = None
-
-if sucursal == "-- Selecciona o busca la sucursal --":
-    puede_guardar = False
-    mensaje_advertencia = "Por favor selecciona una sucursal para poder guardar el reporte."
-
-elif ya_existe and not es_contador:
-    puede_guardar = False
-    mensaje_advertencia = (
-        f"🔒 **REPORTE YA REGISTRADO:** La sucursal **{sucursal}** ya tiene un reporte guardado el día de hoy ({fecha_op_str}). "
-        "Como supervisor, los reportes están protegidos contra sobreescritura. Si requieres hacer un cambio, contacta al Contador Auditor."
-    )
-elif ya_existe and es_contador:
-    st.warning(f"ℹ️ **Modo Auditor:** Ya existe reporte para **{sucursal}** el día **{fecha_op_str}**. Se guardará como un reporte adicional/turno nuevo.")
-
-if mensaje_advertencia:
-    st.error(mensaje_advertencia)
-
-if st.button(
-    "💾 Guardar y Confirmar Reporte",
-    type="primary",
-    disabled=not puede_guardar,
-    use_container_width=True
-):
-    with st.spinner("Guardando reporte y asegurando en disco..."):
-        try:
-            ruta_guardada = None
-
-            if foto:
-                ruta_guardada = guardar_imagen_optimizada(
-                    foto, sucursal, fecha_op_str
-                )
-
-            horario_str = (
-                f"{hora_ini.strftime('%H:%M')} a "
-                f"{hora_fin.strftime('%H:%M')}"
-            )
-
-            nuevo_reporte = {
-                "Fecha": fecha_op_str,
-                "Sitio / Unidad": sucursal,
-                "Horario": horario_str,
-                "Costo Boleto": float(costo_boleto),
-                "Folio Inicial": (
-                    float(f_ini)
-                    if es_ingreso_directo
-                    else int(f_ini)
-                ),
-                "Folio Final": (
-                    0
-                    if es_ingreso_directo
-                    else int(f_f)
-                ),
-                "Fotografía": ruta_guardada,
-            }
-
-            st.session_state["reporte_pendiente"] = nuevo_reporte
-
-            st.success(
-                "Los datos del reporte están preparados correctamente."
-            )
-
-        except Exception as e:
-            st.error(f"No se pudo preparar el reporte: {e}")
-            
+    st.metric("Ingreso N
