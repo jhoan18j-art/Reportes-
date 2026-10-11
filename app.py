@@ -8,7 +8,7 @@ import pandas as pd
 import streamlit as st
 from PIL import Image
 
-# Soporte para análisis de imágenes con Gemini
+# Soporte opcional para análisis de imágenes con Gemini
 try:
     from google import genai
     GENAI_AVAILABLE = True
@@ -82,7 +82,7 @@ UNIDADES_JESUS = ["PAMPAS", "RAMMA", "SUSHITTO", "BARRANCA", "CARAJILLO", "BENIN
 UNIDADES_VICTOR = ["SUMO STA", "CHEGARAY", "RYOSHI", "ENCANTO", "S. AZURA", "CHURRASCA"]
 SUCURSALES_LISTA = ["-- Selecciona o busca la sucursal --"] + list(PRECIOS_SUCURSALES.keys())
 
-# Valores iniciales de los campos del formulario (las llaves conectan los campos con el estado)
+# Valores iniciales de los campos del formulario
 CAMPOS_INICIALES = {
     "f_ini_val": 0, "f_fin_val": 0, "f_sin_val": 0,
     "f_can_val": 0, "f_per_val": 0,
@@ -218,181 +218,133 @@ if st.session_state.rol == "Contador Auditor":
                     neto_evt = bruto_evt - float(ev_gastos)
                     horario_evt = f"{ev_hora_ini.strftime('%H:%M')} a {ev_hora_fin.strftime('%H:%M')}"
 
-                    reg_evento = {
+                    nuevo_evento = {
                         "Fecha": ev_fecha.strftime("%d/%m/%Y"),
-                        "Fecha de Evento": ev_fecha.strftime("%d/%m/%Y"),
-                        "Sucursal / Salón de Evento": ev_sucursal,
-                        "Horario": horario_evt,
-                        "Supervisor": "Víctor (Contador - Evento)",
                         "Sitio / Unidad": ev_sucursal,
-                        "Costo Boleto (MXN)": ev_costo,
-                        "Folio Inicial": ev_ini, "Folio Final": ev_fin, "Folio sin desprender": 0,
-                        "Total Boletos Entregados": boletos_evt, "Boletos Pagados (A Entregar)": boletos_evt,
-                        "Cancelados": 0, "Pérdidos": 0,
-                        "Gastos de Operación": "Evento Especial", "Gastos Especiales (MXN)": ev_gastos,
-                        "Gastos Generales (MXN)": 0.0, "Total Gastos y Nóminas (MXN)": ev_gastos,
-                        "Ingreso Bruto (MXN)": bruto_evt, "Ingreso Neto / Utilidad (MXN)": neto_evt,
-                        "Rentabilidad (%)": 100.0 if bruto_evt > 0 else 0.0,
-                        "Cantidad a Entregar (MXN)": neto_evt,
-                        "Elaboró": ev_elaboro, "Recibe": ev_recibe,
-                        "Evidencia Foto": "N/A", "foto_bytes": None
+                        "Horario": horario_evt,
+                        "Costo Boleto": float(ev_costo),
+                        "Folio Inicial": int(ev_ini),
+                        "Folio Final": int(ev_fin),
+                        "Total Boletos": boletos_evt,
+                        "Sin Cobro": 0,
+                        "Cancelados": 0,
+                        "Perdidos": 0,
+                        "Boletos Cobrados": boletos_evt,
+                        "Ingreso Bruto": bruto_evt,
+                        "Gastos Especiales": float(ev_gastos),
+                        "Gastos Generales": 0.0,
+                        "Total Gastos": float(ev_gastos),
+                        "Ingreso Neto": neto_evt,
+                        "Elaboró": ev_elaboro,
+                        "Recibe": ev_recibe,
+                        "Tipo": "Evento Extraordinario",
+                        "foto_bytes": None
                     }
-                    st.session_state.registros.append(reg_evento)
+                    st.session_state.registros.append(nuevo_evento)
                     guardar_registros_permanentes(st.session_state.registros)
-                    st.success(f"¡Evento guardado! {boletos_evt} boletos × ${float(ev_costo):,.2f} = ${bruto_evt:,.2f}; menos gastos ${float(ev_gastos):,.2f} = ${neto_evt:,.2f}")
+                    st.success("✅ Reporte de evento registrado con éxito.")
                     st.rerun()
+                else:
+                    st.error("❌ Por favor, selecciona una sucursal válida.")
 
+    st.markdown("### 📊 Base de Datos General de Reportes")
     if st.session_state.registros:
-        registros_limpios = [{k: v for k, v in reg.items() if k not in ["foto_bytes", "foto_b64"]} for reg in st.session_state.registros]
-        df_auditoria = pd.DataFrame(registros_limpios)
-        for col in ["Fecha de Evento", "Sucursal / Salón de Evento", "Horario"]:
-            if col not in df_auditoria.columns:
-                df_auditoria[col] = ""
-        df_auditoria["Fecha de Evento"] = df_auditoria["Fecha de Evento"].replace("", pd.NA).fillna(df_auditoria.get("Fecha", ""))
-        df_auditoria["Sucursal / Salón de Evento"] = df_auditoria["Sucursal / Salón de Evento"].replace("", pd.NA).fillna(df_auditoria.get("Sitio / Unidad", ""))
-        df_auditoria["Horario"] = df_auditoria["Horario"].fillna("")
-        primeras = ["Fecha de Evento", "Sucursal / Salón de Evento", "Horario"]
-        df_auditoria = df_auditoria[primeras + [c for c in df_auditoria.columns if c not in primeras]]
-
-        st.markdown(f"### 👥 Control de Hojas de Reporte Subidas ({len(st.session_state.registros)})")
-        st.dataframe(df_auditoria, use_container_width=True)
-
-        csv_export = df_auditoria.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Descargar Reporte Completo (CSV)", data=csv_export, file_name=f"Control_ClubPark_{datetime.now().strftime('%d_%m_%Y')}.csv", mime="text/csv")
-
-        if st.button("🗑️ Limpiar / Borrar Todos los Registros"):
-            st.session_state.registros = []
-            guardar_registros_permanentes([])
-            st.rerun()
-    st.stop()
+        df_registros = pd.DataFrame(st.session_state.registros)
+        st.dataframe(df_registros.drop(columns=["foto_bytes", "foto_b64"], errors="ignore"), use_container_width=True)
+    else:
+        st.info("No hay reportes registrados hasta el momento.")
 
 # ==========================================
-# PANEL SUPERVISORES Y CAPTURA CON IA
+# PANEL SUPERVISORES
 # ==========================================
-st.markdown("---")
-st.markdown("### 📸 1. Evidencia Fotográfica del Reporte Físico")
-foto_reporte = st.file_uploader("Tomar o subir foto de la hoja de reporte", type=["jpg", "jpeg", "png"], key="foto")
+else:
+    st.markdown("---")
+    st.markdown(f"## 📋 Registro Diario de Operaciones ({st.session_state.usuario_autenticado})")
 
-if foto_reporte is not None:
-    imagen = Image.open(foto_reporte)
-    st.image(imagen, caption="Vista previa de la hoja de reporte física", width=350)
+    sucursal = st.selectbox(
+        "Sucursal / Unidad:",
+        SUCURSALES_LISTA,
+        key="select_sitio",
+        on_change=actualizar_costo_sucursal
+    )
 
-    api_key_env = os.environ.get("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", "")
-
-    if GENAI_AVAILABLE and api_key_env:
-        if st.button("🤖 Analizar Foto y Llenar Datos Automáticamente con IA"):
-            with st.spinner("Analizando reporte físico con IA..."):
-                prompt_text = (
-                    "Analiza la foto del reporte impreso o manuscrito. "
-                    "Devuelve UNICAMENTE un JSON estricto sin comillas de bloque markdown con este formato: "
-                    '{"folio_inicial": 0, "folio_final": 0, "folio_sin_desprender": 0, '
-                    '"cancelados": 0, "perdidos": 0, "gastos_especiales": 0.0, '
-                    '"gastos_generales": 0.0, "elaboro": "", "recibe": ""}'
-                )
-
-                texto_res = None
-                try:
-                    # Intento 1: SDK Nuevo
-                    from google import genai
-                    client = genai.Client(api_key=api_key_env)
-                    response = client.models.generate_content(
-                        model="gemini-2.5-flash",
-                        contents=[prompt_text, imagen]
-                    )
-                    texto_res = (response.text or "").strip()
-                except Exception:
-                    try:
-                        # Intento 2: SDK Legacy
-                        import google.generativeai as genai_legacy
-                        genai_legacy.configure(api_key=api_key_env)
-                        model_legacy = genai_legacy.GenerativeModel("gemini-2.5-flash")
-                        response_legacy = model_legacy.generate_content([prompt_text, imagen])
-                        texto_res = (response_legacy.text or "").strip()
-                    except Exception as err:
-                        st.error(f"❌ Error al conectar con la IA: {err}")
-
-                # CORREGIDO: el procesamiento de la respuesta va DENTRO del botón,
-                # antes estaba fuera y nunca se ejecutaba.
-                if texto_res:
-                    try:
-                        clean_json = texto_res.replace("```json", "").replace("```", "").strip()
-                        datos_ia = json.loads(clean_json)
-
-                        # Asignación segura a variables de estado (los campos usan estas llaves)
-                        st.session_state.f_ini_val = int(datos_ia.get("folio_inicial", 0) or 0)
-                        st.session_state.f_fin_val = int(datos_ia.get("folio_final", 0) or 0)
-                        st.session_state.f_sin_val = int(datos_ia.get("folio_sin_desprender", 0) or 0)
-                        st.session_state.f_can_val = int(datos_ia.get("cancelados", 0) or 0)
-                        st.session_state.f_per_val = int(datos_ia.get("perdidos", 0) or 0)
-                        st.session_state.g_esp_val = float(datos_ia.get("gastos_especiales", 0.0) or 0.0)
-                        st.session_state.g_gen_val = float(datos_ia.get("gastos_generales", 0.0) or 0.0)
-                        st.session_state.elaboro_val = str(datos_ia.get("elaboro", "") or "")
-                        st.session_state.recibe_val = str(datos_ia.get("recibe", "") or "")
-
-                        st.success("✨ ¡Datos leídos de la imagen e insertados en los campos!")
-                        st.rerun()
-                    except Exception as parse_err:
-                        st.warning(f"⚠️ No se pudo procesar la respuesta de la IA: {parse_err}")
-    elif not api_key_env:
-        st.caption("ℹ️ Sin clave de IA configurada: llena los campos a mano.")
-
-st.markdown("---")
-st.markdown("### 📝 2. Captura / Verificación de Datos del Reporte")
-
-# CORREGIDO: la sucursal va FUERA del formulario para que el costo se actualice
-# en cuanto la eliges (dentro de un form el on_change no se dispara hasta enviar).
-sucursal_sel = st.selectbox(
-    "Sitio / Unidad",
-    SUCURSALES_LISTA,
-    key="select_sitio",
-    on_change=actualizar_costo_sucursal
-)
-
-# FORMULARIO CON CAMPOS CONECTADOS POR LLAVE (key=) AL SESSION_STATE.
-# CORREGIDO: antes usaban value= y por eso no se podía escribir ni se llenaban con la IA.
-with st.form("form_reporte_supervisor"):
     col_f1, col_f2 = st.columns(2)
     with col_f1:
-        fecha_rep = st.date_input("Fecha de Evento / Operación", value=date.today())
-        hora_ini = st.time_input("Horario: inicio", value=time(8, 0))
-        hora_fin = st.time_input("Horario: fin", value=time(22, 0))
+        fecha_op = st.date_input("Fecha:", value=date.today())
     with col_f2:
-        costo_boleto = st.number_input("Costo por Boleto ($ MXN)", step=1, key="costo_boleto_val")
-        supervisor_nombre = st.session_state.usuario_autenticado
+        costo_boleto = st.number_input("Costo por Boleto ($ MXN):", value=st.session_state.costo_boleto_val, step=5)
 
-    st.markdown("#### 🎟️ Control de Folios y Boletos")
-    c_fol1, c_fol2, c_fol3 = st.columns(3)
-    with c_fol1:
-        f_ini = st.number_input("Folio Inicial", step=1, key="f_ini_val")
-        f_fin = st.number_input("Folio Final", step=1, key="f_fin_val")
-    with c_fol2:
-        f_sin = st.number_input("Folio sin Desprender", step=1, key="f_sin_val")
-        f_can = st.number_input("Boletos Cancelados", step=1, key="f_can_val")
-    with c_fol3:
-        f_per = st.number_input("Boletos Perdidos", step=1, key="f_per_val")
+    col_h1, col_h2 = st.columns(2)
+    with col_h1:
+        hora_ini = st.time_input("Hora de Apertura:", value=time(13, 0))
+    with col_h2:
+        hora_fin = st.time_input("Hora de Cierre:", value=time(23, 0))
 
-    st.caption("Boletos = (Folio Final − Folio Inicial) + 1 − sin desprender − cancelados − perdidos. "
-               "Ingreso = Boletos × Costo. Neto = Ingreso − Gastos de operación. El cálculo se muestra al guardar.")
+    with st.expander("📷 Captura o Escaneo de Reporte Físico", expanded=False):
+        foto = st.file_uploader("Subir foto del reporte físico:", type=["png", "jpg", "jpeg"])
+        if foto:
+            st.image(foto, caption="Reporte Cargado", width=300)
 
-    st.markdown("#### 💸 Gastos de Operación")
-    col_g1, col_g2 = st.columns(2)
-    with col_g1:
-        g_esp = st.number_input("Gastos Especiales ($ MXN)", step=5.0, key="g_esp_val")
-    with col_g2:
-        g_gen = st.number_input("Gastos Generales / Nómina ($ MXN)", step=5.0, key="g_gen_val")
+    with st.form("form_reporte_diario"):
+        st.markdown("#### 🎫 Control de Boletos")
+        c_b1, c_b2, c_b3 = st.columns(3)
+        with c_b1:
+            f_ini = st.number_input("Folio Inicial:", value=st.session_state.f_ini_val, step=1)
+            f_fin = st.number_input("Folio Final:", value=st.session_state.f_fin_val, step=1)
+        with c_b2:
+            f_sin = st.number_input("Boletos Sin Cobro:", value=st.session_state.f_sin_val, step=1)
+            f_can = st.number_input("Boletos Cancelados:", value=st.session_state.f_can_val, step=1)
+        with c_b3:
+            f_per = st.number_input("Boletos Perdidos:", value=st.session_state.f_per_val, step=1)
 
-    st.markdown("#### ✍️ Firmas y Control")
-    col_firm1, col_firm2 = st.columns(2)
-    with col_firm1:
-        elaboro_txt = st.text_input("Elaboró", key="elaboro_val")
-    with col_firm2:
-        recibe_txt = st.text_input("Recibe", key="recibe_val")
+        st.markdown("#### 💵 Egresos / Gastos")
+        c_g1, c_g2 = st.columns(2)
+        with c_g1:
+            g_esp = st.number_input("Gastos Especiales ($ MXN):", value=st.session_state.g_esp_val, step=10.0)
+        with c_g2:
+            g_gen = st.number_input("Gastos Generales ($ MXN):", value=st.session_state.g_gen_val, step=10.0)
 
-    btn_guardar_reporte = st.form_submit_button("💾 Guardar y Finalizar Reporte")
+        st.markdown("#### ✍️ Firmas")
+        c_fir1, c_fir2 = st.columns(2)
+        with c_fir1:
+            elaboro = st.text_input("Elaboró:", value=st.session_state.usuario_autenticado)
+        with c_fir2:
+            recibe = st.text_input("Recibe:", value=st.session_state.recibe_val)
 
-    if btn_guardar_reporte:
-        if sucursal_sel == "-- Selecciona o busca la sucursal --":
-            st.error("❌ Por favor selecciona una sucursal válida.")
-        else:
-            tot_entregados = max(0, (f_fin - f_ini) + 1 - f_sin)
-  
+        if st.form_submit_button("💾 Guardar Reporte Diario"):
+            if sucursal != "-- Selecciona o busca la sucursal --":
+                total_boletos = max(0, (int(f_fin) - int(f_ini)) + 1)
+                boletos_cobrados = max(0, total_boletos - int(f_sin) - int(f_can))
+                bruto = boletos_cobrados * float(costo_boleto)
+                total_gastos = float(g_esp) + float(g_gen)
+                neto = bruto - total_gastos
+
+                nuevo_registro = {
+                    "Fecha": fecha_op.strftime("%d/%m/%Y"),
+                    "Sitio / Unidad": sucursal,
+                    "Horario": f"{hora_ini.strftime('%H:%M')} a {hora_fin.strftime('%H:%M')}",
+                    "Costo Boleto": float(costo_boleto),
+                    "Folio Inicial": int(f_ini),
+                    "Folio Final": int(f_fin),
+                    "Total Boletos": total_boletos,
+                    "Sin Cobro": int(f_sin),
+                    "Cancelados": int(f_can),
+                    "Perdidos": int(f_per),
+                    "Boletos Cobrados": boletos_cobrados,
+                    "Ingreso Bruto": bruto,
+                    "Gastos Especiales": float(g_esp),
+                    "Gastos Generales": float(g_gen),
+                    "Total Gastos": total_gastos,
+                    "Ingreso Neto": neto,
+                    "Elaboró": elaboro,
+                    "Recibe": recibe,
+                    "Tipo": "Operación Regular",
+                    "foto_bytes": foto.getvalue() if foto else None
+                }
+                st.session_state.registros.append(nuevo_registro)
+                guardar_registros_permanentes(st.session_state.registros)
+                st.success("✅ Reporte guardado correctamente.")
+                st.rerun()
+            else:
+                st.error("❌ Por favor, selecciona una sucursal.")
+        
