@@ -413,5 +413,3 @@ with col_g1:
     g_esp = st.number_input("Gastos Especiales ($ MXN)", step=5.0, key="g_esp_val")
 with col_g2:
     g_gen = st.number_input("Gastos Generales / Nómina ($ MXN)", step=5.0, key="g_gen_val")
-
-total_gast
