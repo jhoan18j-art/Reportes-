@@ -862,7 +862,7 @@ if es_contador:
                 f"{ev_ini_h.strftime('%H:%M')} a"
                 f" {ev_fin_h.strftime('%H:%M')}"
             ),
-            "Costo Boleto": float(ev_costo),
+         "Costo Boleto": float(ev_costo),
             "Folio Inicial": int(ev_f_ini),
             "Folio Final": int(ev_f_fin),
             "Total Boletos": ev_boletos,
@@ -1331,4 +1331,4 @@ if st.button(
       st.error(
           "❌ Ocurrió un error al guardar el reporte en el disco permanente."
       )
-    
+  
