@@ -471,5 +471,5 @@ if es_contador:
         fecha_revision = st.date_input("Fecha a verificar:", value=date.today(), key="fecha_rev_aud")
         fecha_rev_str = fecha_revision.strftime("%d/%m/%Y")
 
-        unidades_reportadas_fecha = [
+        unidades_reportadas_fecha = []
             reg.get("Sitio / Unidad") for reg in st.session_state.registros i
