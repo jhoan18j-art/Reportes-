@@ -585,20 +585,33 @@ else:
     })
 
     # 6. Validación de Fotografía
-    img_test = Image.new("RGB", (640, 480), color=(150, 150, 150))
-    buf_test = io.BytesIO()
-    img_test.save(buf_test, format="JPEG")
-    buf_test.name = "reporte_CARAJILLO_test.jpg"
-    res_foto = validar_y_analizar_foto(buf_test, ["CARAJILLO", "PAMPAS"])
-    p6 = res_foto["valida"] and res_foto["datos_extraidos"].get("sucursal") == "CARAJILLO"
-    pruebas.append({
-        "Área": "Procesamiento de Fotos",
-        "Prueba": "Análisis de integridad, exposición y detección automática en imagen",
-        "Resultado": "✅ PASS" if p6 else "❌ FAIL",
-        "Detalle": f"Resolución: {res_foto['ancho']}x{res_foto['alto']}, Brillo: {res_foto['brillo']}, Detección: {res_foto['datos_extraidos']}."
-    })
+img_test = Image.new("RGB", (640, 480), color=(150, 150, 150))
+buf_test = io.BytesIO()
+img_test.save(buf_test, format="JPEG")
+buf_test.name = "reporte_CARAJILLO_test.jpg"
 
-    return pruebas
+res_foto = validar_y_analizar_foto(
+    buf_test,
+    ["CARAJILLO", "PAMPAS"]
+)
+
+p6 = (
+    res_foto["valida"]
+    and res_foto["datos_extraidos"].get("sucursal") == "CARAJILLO"
+)
+
+pruebas.append({
+    "Área": "Procesamiento de Fotos",
+    "Prueba": "Análisis de integridad, exposición y detección automática en imagen",
+    "Resultado": "✅ PASS" if p6 else "❌ FAIL",
+    "Detalle": (
+        f"Resolución: {res_foto['ancho']}x{res_foto['alto']}, "
+        f"Brillo: {res_foto['brillo']}, "
+        f"Detección: {res_foto['datos_extraidos']}."
+    )
+})
+
+return pruebas
 
 # =========================================================================
 # CONFIGURACIÓN DE SUCURSALES Y PRECIOS
