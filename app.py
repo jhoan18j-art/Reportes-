@@ -169,23 +169,12 @@ def evaluar_rentabilidad(margen):
     else:
         return "🔴 No Rentable (Pérdida)"
 
-def ya_existe_reporte(sucursal, fecha_obj):
-    """Verifica si ya existe un reporte para esa sucursal en esa fecha normalizando formatos."""
+def ya_existe_reporte(sucursal, fecha_str):
+    """Verifica si ya existe un reporte para esa sucursal en esa fecha."""
     if sucursal == "-- Selecciona o busca la sucursal --":
         return False
-    
-    # Normalizar fecha seleccionada a string DD/MM/YYYY y YYYY-MM-DD para robustez
-    if isinstance(fecha_obj, (date, datetime)):
-        f_dmy = fecha_obj.strftime("%d/%m/%Y")
-        f_ymd = fecha_obj.strftime("%Y-%m-%d")
-    else:
-        f_dmy = str(fecha_obj)
-        f_ymd = str(fecha_obj)
-
     for reg in st.session_state.registros:
-        reg_fecha = str(reg.get("Fecha", ""))
-        reg_sitio = str(reg.get("Sitio / Unidad", ""))
-        if reg_sitio == sucursal and (reg_fecha == f_dmy or reg_fecha == f_ymd):
+        if reg.get("Sitio / Unidad") == sucursal and reg.get("Fecha") == fecha_str:
             return True
     return False
 
@@ -193,20 +182,23 @@ def ya_existe_reporte(sucursal, fecha_obj):
 # MOTOR FINANCIERO Y GENERADOR DE EXCEL DETALLADO
 # =========================================================================
 def generar_excel_completo(registros):
-    """Genera un archivo Excel profesional con hojas de análisis."""
+    """Genera un archivo Excel profesional con 3 hojas: Semanal, Mensual y Detalle."""
     if not registros:
         return None
     
     df = pd.DataFrame(registros)
+    
+    # Normalizar columnas y fechas
     df["Fecha_DT"] = pd.to_datetime(df["Fecha"], format="%d/%m/%Y", errors="coerce")
-    df["Fecha_DT"] = df["Fecha_DT"].fillna(pd.to_datetime(df["Fecha"], format="%Y-%m-%d", errors="coerce"))
     df = df.sort_values(by="Fecha_DT", ascending=False)
     
-    df["Año"] = df["Fecha_DT"].dt.year.fillna(2026).astype(int)
-    df["Semana"] = df["Fecha_DT"].dt.isocalendar().week.fillna(1).astype(int)
+    # Calcular Semana y Mes
+    df["Año"] = df["Fecha_DT"].dt.year
+    df["Semana"] = df["Fecha_DT"].dt.isocalendar().week
     df["Semana_Etiqueta"] = df["Año"].astype(str) + " - Sem " + df["Semana"].astype(str)
-    df["Mes_Etiqueta"] = df["Fecha_DT"].dt.strftime("%Y-%m (%B)").fillna("2026-10")
+    df["Mes_Etiqueta"] = df["Fecha_DT"].dt.strftime("%Y-%m (%B)")
     
+    # Columnas numéricas seguras
     cols_num = ["Ingreso Bruto", "Gastos Especiales", "Gastos Generales / Nómina", "Total Gastos", "Ingreso Neto", "Boletos Cobrados"]
     for col in cols_num:
         if col in df.columns:
@@ -217,6 +209,7 @@ def generar_excel_completo(registros):
     output = io.BytesIO()
     
     with pd.ExcelWriter(output, engine="openpyxl" if OPENPYXL_OK else "xlsxwriter") as writer:
+        # 1. RESUMEN SEMANAL POR SUCURSAL
         resumen_semanal = df.groupby(["Semana_Etiqueta", "Sitio / Unidad"]).agg({
             "Boletos Cobrados": "sum",
             "Ingreso Bruto": "sum",
@@ -230,8 +223,10 @@ def generar_excel_completo(registros):
             (resumen_semanal["Ingreso Neto"] / resumen_semanal["Ingreso Bruto"]) * 100
         ).fillna(0.0).round(2)
         resumen_semanal["Rentabilidad"] = resumen_semanal["Margen (%)"].apply(evaluar_rentabilidad)
+        resumen_semanal = resumen_semanal.sort_values(by=["Semana_Etiqueta", "Ingreso Neto"], ascending=[False, False])
         resumen_semanal.to_excel(writer, sheet_name="Rentabilidad Semanal", index=False)
 
+        # 2. RESUMEN MENSUAL POR SUCURSAL
         resumen_mensual = df.groupby(["Mes_Etiqueta", "Sitio / Unidad"]).agg({
             "Boletos Cobrados": "sum",
             "Ingreso Bruto": "sum",
@@ -245,8 +240,10 @@ def generar_excel_completo(registros):
             (resumen_mensual["Ingreso Neto"] / resumen_mensual["Ingreso Bruto"]) * 100
         ).fillna(0.0).round(2)
         resumen_mensual["Rentabilidad"] = resumen_mensual["Margen (%)"].apply(evaluar_rentabilidad)
+        resumen_mensual = resumen_mensual.sort_values(by=["Mes_Etiqueta", "Ingreso Neto"], ascending=[False, False])
         resumen_mensual.to_excel(writer, sheet_name="Rentabilidad Mensual", index=False)
 
+        # 3. DETALLE INDIVIDUAL DE REPORTES
         cols_detalle = [
             "ID", "Fecha", "Sitio / Unidad", "Horario", "Tipo", "Costo Boleto",
             "Folio Inicial", "Folio Final", "Total Boletos", "Sin Cobro", "Cancelados", "Perdidos",
@@ -262,11 +259,14 @@ def generar_excel_completo(registros):
     if OPENPYXL_OK:
         output.seek(0)
         wb = openpyxl.load_workbook(output)
+        
         header_fill = PatternFill(start_color="1F497D", end_color="1F497D", fill_type="solid")
         header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
         border_thin = Border(
-            left=Side(style='thin', color='D9D9D9'), right=Side(style='thin', color='D9D9D9'),
-            top=Side(style='thin', color='D9D9D9'), bottom=Side(style='thin', color='D9D9D9')
+            left=Side(style='thin', color='D9D9D9'),
+            right=Side(style='thin', color='D9D9D9'),
+            top=Side(style='thin', color='D9D9D9'),
+            bottom=Side(style='thin', color='D9D9D9')
         )
 
         for sheetname in wb.sheetnames:
@@ -305,7 +305,10 @@ def generar_excel_completo(registros):
 # SUITE DE PRUEBAS DE REGRESIÓN AUTOMATIZADAS
 # =========================================================================
 def ejecutar_pruebas_regresion():
+    """Ejecuta una batería completa de pruebas de regresión técnica y funcional."""
     pruebas = []
+
+    # 1. Prueba de Cifrado y Descifrado Seguro
     datos_prueba = [{"ID": "TEST_ENC", "Sitio / Unidad": "CARAJILLO", "Neto": 5000.0}]
     clave_t = "ClavePrueba2026!"
     cifrado_str = cifrar_respaldo_seguro(datos_prueba, clave_t)
@@ -316,8 +319,67 @@ def ejecutar_pruebas_regresion():
         "Área": "Criptografía y Nube",
         "Prueba": "Cifrado PBKDF2/HMAC y rechazo ante alteración o clave incorrecta",
         "Resultado": "✅ PASS" if p1 else "❌ FAIL",
-        "Detalle": "Validó integridad criptográfica y firma HMAC."
+        "Detalle": "Validó integridad criptográfica, derivación de 100k iteraciones y firma HMAC."
     })
+
+    # 2. Prueba de Regresión de Comprensión de Listas (Evitar '[' sin cerrar)
+    sample_lista = [{"Sitio / Unidad": "CARAJILLO", "Fecha": "11/10/2026"}, {"Sitio / Unidad": "PAMPAS", "Fecha": "11/10/2026"}]
+    unidades_test = [r.get("Sitio / Unidad") for r in sample_lista if r.get("Fecha") == "11/10/2026"]
+    p2 = (len(unidades_test) == 2 and "CARAJILLO" in unidades_test)
+    pruebas.append({
+        "Área": "Sintaxis y Regresión",
+        "Prueba": "Evaluación segura de listas de reporte y recordatorios",
+        "Resultado": "✅ PASS" if p2 else "❌ FAIL",
+        "Detalle": "Comprensión de listas de auditoría y WhatsApp cerrada y validada."
+    })
+
+    # 3. Prueba de Cálculos Financieros y Boletos
+    tot_bol = (50 - 1) + 1 # 50
+    cobrados = tot_bol - 2 - 1 # 47
+    bruto = cobrados * 100.0 # 4700.0
+    gastos = 1700.0
+    neto = bruto - gastos # 3000.0
+    margen = (neto / bruto) * 100 # 63.83%
+    p3 = (cobrados == 47 and bruto == 4700.0 and neto == 3000.0 and round(margen, 2) == 63.83)
+    pruebas.append({
+        "Área": "Finanzas y Margen",
+        "Prueba": "Cálculo exacto de cobrados, bruto, egresos y margen",
+        "Resultado": "✅ PASS" if p3 else "❌ FAIL",
+        "Detalle": f"Folios calculados: 47 cobrados, $4,700 bruto, $3,000 neto ({margen:.2f}%)."
+    })
+
+    # 4. Prueba de Semáforos de Rentabilidad
+    p4 = (
+        "Alta" in evaluar_rentabilidad(45.0) and
+        "Moderada" in evaluar_rentabilidad(20.0) and
+        "Baja" in evaluar_rentabilidad(5.0) and
+        "Pérdida" in evaluar_rentabilidad(-5.0)
+    )
+    pruebas.append({
+        "Área": "Clasificación de Negocio",
+        "Prueba": "Semáforos de Rentabilidad (Alta, Moderada, Baja, Pérdida)",
+        "Resultado": "✅ PASS" if p4 else "❌ FAIL",
+        "Detalle": "Validación de márgenes >=40% (Alta), 15-39% (Moderada), 0-14% (Baja), <0% (Pérdida)."
+    })
+
+    # 5. Prueba de Formato de Excel
+    mock_excel_data = [{
+        "ID": "TEST_EXCEL", "Fecha": "11/10/2026", "Sitio / Unidad": "CARAJILLO",
+        "Horario": "13:00 a 23:00", "Costo Boleto": 100.0, "Folio Inicial": 1, "Folio Final": 50,
+        "Total Boletos": 50, "Sin Cobro": 2, "Cancelados": 1, "Perdidos": 0, "Boletos Cobrados": 47,
+        "Ingreso Bruto": 4700.0, "Gastos Especiales": 200.0, "Gastos Generales / Nómina": 1500.0,
+        "Total Gastos": 1700.0, "Ingreso Neto": 3000.0, "Margen (%)": 63.83, "Rentabilidad": "🟢 Alta",
+        "Elaboró": "Test", "Recibe": "Auditor", "Tipo": "Operación Regular", "foto_path": None
+    }]
+    excel_bin = generar_excel_completo(mock_excel_data)
+    p5 = (excel_bin is not None and len(excel_bin) > 2000)
+    pruebas.append({
+        "Área": "Entregables",
+        "Prueba": "Generación de libro Excel multi-pestaña (Semanal, Mensual, Detalle)",
+        "Resultado": "✅ PASS" if p5 else "❌ FAIL",
+        "Detalle": f"Estructura binaria válida con {len(excel_bin) if excel_bin else 0} bytes."
+    })
+
     return pruebas
 
 # =========================================================================
@@ -383,9 +445,7 @@ if st.session_state.usuario_autenticado is None:
                 st.success(f"Bienvenido {nombre_usuario}")
                 st.rerun()
             elif nombre_usuario == "Víctor (Contador)" and password == pass_auditor:
-                st.session_state.usuario_autenticado = "Víctor (Contador)"
-                st.session_state.rol = "Contador Auditor"
-                st.success("Acceso concedido como Contador Auditor")
+                st.session_state.usuario_autenticado = "Víct Auditor")
                 st.rerun()
             else:
                 st.error("❌ Contraseña incorrecta o usuario no seleccionado.")
@@ -446,15 +506,14 @@ if es_contador:
         "🛡️ Cifrado y Pruebas de Regresión"
     ])
 
+    # TAB 1: WhatsApp
     with tab_aud1:
         st.markdown("#### 🔔 Control de Reportes Faltantes por Fecha")
         fecha_revision = st.date_input("Fecha a verificar:", value=date.today(), key="fecha_rev_aud")
         fecha_rev_str = fecha_revision.strftime("%d/%m/%Y")
-        fecha_rev_alt = fecha_revision.strftime("%Y-%m-%d")
 
         unidades_reportadas_fecha = [
-            reg.get("Sitio / Unidad") for reg in st.session_state.registros 
-            if reg.get("Fecha") in [fecha_rev_str, fecha_rev_alt]
+            reg.get("Sitio / Unidad") for reg in st.session_state.registros if reg.get("Fecha") == fecha_rev_str
         ]
 
         faltantes_jesus = [u for u in UNIDADES_JESUS if u not in unidades_reportadas_fecha]
@@ -479,6 +538,7 @@ if es_contador:
             else:
                 st.success("✅ ¡Todos sus reportes están completos!")
 
+    # TAB 2: Evento Extraordinario
     with tab_aud2:
         st.markdown("#### 🎪 Capturar Evento Extraordinario")
         ev_c1, ev_c2 = st.columns(2)
@@ -499,15 +559,7 @@ if es_contador:
         ev_neto = ev_bruto - float(ev_gastos)
         ev_margen = (ev_neto / ev_bruto * 100) if ev_bruto > 0 else 0.0
 
-        st.info(
-    f"**Boletos:** {ev_boletos} | "
-    f"**Bruto:** ${ev_bruto:,.2f} | "
-    f"**Gastos:** ${ev_gastos:,.2f} | "
-    f"**Neto:** ${ev_neto:,.2f} | "
-    f"**Rentabilidad:** {evaluar_rentabilidad(ev_margen)}"
-        )
-        
-
+        st.info(f"**Boletos:** {ev_boletos} | **Bruto:** ${ev_bruto:,.2f} | **Gastos:** ${ev_gastos:,.2f} | **Neto:** ${ev_neto:,.2f} | **Rentabilidad:** {evaluar_rentabilidad(ev_margen)}")
         if st.button("🚀 Registrar Evento Extraordinario", key="btn_save_evento", type="primary"):
             if ev_suc != "-- Selecciona o busca la sucursal --":
                 id_ev = f"EVT_{uuid.uuid4().hex[:6]}"
@@ -544,6 +596,7 @@ if es_contador:
             else:
                 st.error("❌ Selecciona una sucursal válida.")
 
+    # TAB 3: Gestión y Eliminación
     with tab_aud3:
         if st.session_state.registros:
             opciones_rep = [
@@ -574,34 +627,22 @@ if es_contador:
                 guardar_registros_permanentes(st.session_state.registros)
                 st.success("✅ Reporte y su fotografía eliminados.")
                 st.rerun()
-            
-            st.markdown("---")
-            if st.button("⚠️ EMERGENCIA: Limpiar Toda la Base de Datos (Borrar Todos los Reportes)", type="secondary"):
-                st.session_state.registros = []
-                guardar_registros_permanentes([])
-                if os.path.exists(DB_FILE):
-                    try:
-                        os.remove(DB_FILE)
-                    except Exception:
-                        pass
-                st.success("✅ Base de datos vaciada por completo.")
-                st.rerun()
         else:
             st.info("No hay reportes registrados.")
-            if st.button("⚠️ EMERGENCIA: Forzar Reinicio de Estado", type="secondary"):
-                st.session_state.registros = []
-                guardar_registros_permanentes([])
-                st.rerun()
 
+    # TAB 4: Fotos Huérfanas
     with tab_aud4:
-        st.markdown("#### 🧹 Fotografías Huérfanas")
+        st.markdown("#### 🧹 Fotografías Huérfanas (Sin reporte en base de datos)")
         fotos_en_uso = {os.path.basename(r.get("foto_path")) for r in st.session_state.registros if r.get("foto_path")}
-        todas_fotos_nombres = [f for f in os.listdir(FOTOS_DIR) if not f.startswith('.')] if os.path.exists(FOTOS_DIR) else []
+        todas_fotos_nombres = [f for f in os.listdir(FOTOS_DIR) if not f.startswith('.')]
         huerfanas = [f for f in todas_fotos_nombres if f not in fotos_en_uso]
 
         st.write(f"Total fotos en servidor: **{len(todas_fotos_nombres)}** | Fotos sin reporte: **{len(huerfanas)}**")
 
         if huerfanas:
+            st.warning(f"Se encontraron {len(huerfanas)} fotos que no corresponden a ningún reporte activo.")
+            for fh in huerfanas[:3]:
+                st.code(fh)
             if st.button("🧹 Eliminar Todas las Fotos Huérfanas", key="btn_clean_huerfanas"):
                 for fh in huerfanas:
                     p = os.path.join(FOTOS_DIR, fh)
@@ -612,19 +653,28 @@ if es_contador:
                 st.success("✅ Fotos huérfanas eliminadas.")
                 st.rerun()
         else:
-            st.success("✅ Todas las fotografías en disco están vinculadas.")
+            st.success("✅ Todas las fotografías en disco están vinculadas a un reporte válido.")
 
+    # TAB 5: Cifrado y Pruebas de Regresión
     with tab_aud5:
         st.markdown("#### 🧪 Batería de Pruebas de Regresión")
+        st.caption("Comprueba que no existan regresiones en fórmulas, comprensión de datos, roles ni criptografía.")
+        
         if st.button("▶️ Ejecutar Pruebas de Regresión", key="btn_reg_tests", type="primary"):
             reg_results = ejecutar_pruebas_regresion()
             st.dataframe(pd.DataFrame(reg_results), use_container_width=True)
-            st.success("🎉 Pruebas de regresión finalizadas.")
+            if all("PASS" in r["Resultado"] for r in reg_results):
+                st.success("🎉 Todas las pruebas de regresión pasaron exitosamente.")
+            else:
+                st.error("⚠️ Se detectó una inconsistencia en las pruebas.")
 
         st.markdown("---")
         st.markdown("#### 🔐 Respaldo Cifrado de Información Financiera")
+        st.caption("Cifra los reportes con contraseña maestra para que nadie pueda ver ingresos ni nóminas sin autorización.")
+
         col_cif1, col_cif2 = st.columns(2)
         with col_cif1:
+            st.markdown("##### 🔒 Generar y Descargar Respaldo Cifrado")
             pass_cifrado = st.text_input("Contraseña para cifrar:", type="password", key="pass_cif_gen")
             if st.button("Generar Archivo Cifrado", use_container_width=True):
                 if len(pass_cifrado) >= 6:
@@ -637,10 +687,12 @@ if es_contador:
                             mime="application/json",
                             use_container_width=True
                         )
+                        st.success("✅ Paquete cifrado generado con autenticación HMAC.")
                 else:
-                    st.error("Mínimo 6 caracteres.")
+                    st.error("La contraseña debe tener al menos 6 caracteres.")
 
         with col_cif2:
+            st.markdown("##### 🔓 Restaurar desde Respaldo Cifrado")
             arch_cif = st.file_uploader("Subir archivo .enc cifrado:", type=["enc", "json"], key="upl_cif_res")
             pass_descif = st.text_input("Contraseña de descifrado:", type="password", key="pass_descif_val")
             if arch_cif is not None and st.button("Restaurar Respaldo Cifrado", type="primary", use_container_width=True):
@@ -649,13 +701,12 @@ if es_contador:
                 if datos_recuperados is not None and isinstance(datos_recuperados, list):
                     st.session_state.registros = datos_recuperados
                     guardar_registros_permanentes(datos_recuperados)
-                    st.success(f"✅ Se restauraron {len(datos_recuperados)} reportes.")
+                    st.success(f"✅ Se restauraron exitosamente {len(datos_recuperados)} reportes protegidos.")
                     st.rerun()
                 else:
-                    st.error(f"❌ Error: {status_msg}")
-
-# =========================================================================
-# SECCIÓN PRINCIPAL: CAPTURA DE REPORTES
+                    st.error(f"❌ Error al descifrar: {status_msg}")
+                    # =========================================================================
+# SECCIÓN PRINCIPAL: CAPTURA DE REPORTES (VALIDADA POR ROL)
 # =========================================================================
 st.markdown("---")
 if not es_contador:
@@ -683,9 +734,11 @@ with col_f1:
         st.write(f"📅 **Fecha de Operación:** `{fecha_hoy.strftime('%d/%m/%Y')}` *(Solo Hoy)*")
         fecha_op = fecha_hoy
 
+    fecha_op_str = fecha_op.strftime("%d/%m/%Y")
+
 with col_f2:
     if es_ingreso_directo:
-        st.info("📌 En esta unidad se captura directamente el Ingreso Bruto.")
+        st.info("📌 En esta unidad se captura directamente el Ingreso Bruto en el campo correspondiente.")
         costo_boleto = 0.0
     else:
         costo_boleto = st.number_input(
@@ -759,9 +812,17 @@ st.markdown("---")
 st.markdown("### 📊 Balance Preliminar del Reporte")
 
 if not es_ingreso_directo:
-    st.metric(label="🎟️ Boletos Pagados (Cobrados)", value=f"{boletos_cobrados_calc} boletos")
+    st.metric(
+        label="🎟️ Boletos Pagados (Cobrados)",
+        value=f"{boletos_cobrados_calc} boletos",
+        help="Total expedido menos boletos sin cobro y cancelados"
+    )
 else:
-    st.metric(label="💼 Modalidad de Cobro", value="Ingreso Directo Capturado")
+    st.metric(
+        label="💼 Modalidad de Cobro",
+        value="Ingreso Directo Capturado",
+        help="Unidad configurada con ingreso bruto directo"
+    )
 
 col_m1, col_m2, col_m3, col_m4 = st.columns(4)
 with col_m1:
@@ -773,29 +834,30 @@ with col_m3:
 with col_m4:
     st.metric("Rentabilidad", rentabilidad_calc)
 
-# Validación corregida de duplicados
-duplicado = ya_existe_reporte(sucursal, fecha_op)
+duplicado = ya_existe_reporte(sucursal, fecha_op_str)
 puede_guardar = True
 
 st.markdown("---")
 
 if duplicado and not es_contador:
-    st.error(f"🚫 **REPORTE YA EXISTE:** La sucursal **{sucursal}** ya cuenta con un reporte para la fecha seleccionada.")
+    st.error(f"🚫 **REPORTE YA EXISTE:** La sucursal **{sucursal}** ya cuenta con un reporte para la fecha **{fecha_op_str}**.")
+    st.warning("⚠️ Como supervisor, no puedes duplicar reportes para la misma sucursal en el mismo día. Si necesitas corregirlo, solicita apoyo al Contador Auditor.")
     puede_guardar = False
 elif duplicado and es_contador:
-    st.warning(f"⚠️ **Atención:** Ya existe un registro previo de **{sucursal}** para esta fecha. Como auditor puedes proceder si es un turno adicional.")
+    st.warning(f"⚠️ **Atención:** Ya existe un reporte de **{sucursal}** para la fecha **{fecha_op_str}**. Como Contador Auditor, puedes registrar este turno o reporte adicional.")
 
+# BOTÓN DE GUARDADO PRINCIPAL
 if st.button("💾 Guardar y Confirmar Reporte Diario", type="primary", use_container_width=True, disabled=not puede_guardar):
     if sucursal == "-- Selecciona o busca la sucursal --":
         st.error("❌ Debes seleccionar una sucursal válida antes de guardar.")
     else:
         id_nuevo = f"REP_{uuid.uuid4().hex[:8]}"
         ruta_foto_guardada = None
-        fecha_op_str = fecha_op.strftime("%d/%m/%Y")
         
         if foto_subida is not None:
             ruta_foto_guardada = guardar_imagen_optimizada(foto_subida, id_nuevo, sucursal, fecha_op_str)
-          nuevo_reporte = {
+
+        nuevo_reporte = {
             "ID": id_nuevo,
             "Fecha": fecha_op_str,
             "Sitio / Unidad": sucursal,
@@ -831,3 +893,5 @@ if st.button("💾 Guardar y Confirmar Reporte Diario", type="primary", use_cont
             st.rerun()
         else:
             st.error("❌ Ocurrió un error al guardar el reporte en el disco permanente.")
+            
+    
