@@ -859,12 +859,25 @@ if "costo_boleto_input" not in st.session_state:
     st.session_state["costo_boleto_input"] = 40
 
             opciones_rep = [
-                f"{r.get('ID')} | {r.get('Fecha')} | {r.get('Sitio / Unidad')} | Neto: ${r.get('Ingreso Neto', 0):,.2f}"
-                for r in st.session_state.registros
-            ]
-            sel_rep = st.selectbox("Seleccionar reporte:", opciones_rep, key="sel_rep_gest")
+            (
+                f"{r.get('ID')} | {r.get('Fecha')} | "
+                f"{r.get('Sitio / Unidad')} | "
+                f"Neto: ${r.get('Ingreso Neto', 0):,.2f}"
+            )
+            for r in st.session_state.registros
+        ]
+
+        if opciones_rep:
+            sel_rep = st.selectbox(
+                "Seleccionar reporte:",
+                opciones_rep,
+                key="sel_rep_gest"
+            )
+
             idx_rep = opciones_rep.index(sel_rep)
             rep_data = st.session_state.registros[idx_rep]
+        else:
+            st.info("No hay reportes para gestionar.")
 
             c_g1, c_g2 = st.columns([2, 1])
             with c_g1:
