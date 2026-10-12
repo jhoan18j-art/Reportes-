@@ -598,7 +598,7 @@ else:
         "Detalle": f"Resolución: {res_foto['ancho']}x{res_foto['alto']}, Brillo: {res_foto['brillo']}, Detección: {res_foto['datos_extraidos']}."
     })
 
-    return pruebas
+        return pruebas
 
 # =========================================================================
 # CONFIGURACIÓN DE SUCURSALES Y PRECIOS
