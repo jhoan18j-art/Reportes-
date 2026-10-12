@@ -478,20 +478,54 @@ def ejecutar_pruebas_regresion():
     pruebas = []
 
     # 1. Criptografía Estándar Fernet
-    if CRYPTOGRAPHY_OK:
-        datos_prueba = [{"ID": "TEST_ENC", "Sitio / Unidad": "CARAJILLO", "Neto": 5000.0}]
-        clave_t = "ClavePrueba2026!Segura"
-        cifrado_str = cifrar_respaldo_seguro(datos_prueba, clave_t)
-        dec_ok, msg_ok = descifrar_respaldo_seguro(cifrado_str, clave_t)
-        dec_bad, msg_bad = descifrar_respaldo_seguro(cifrado_str, "ClaveErronea")
-            })
-    else:
-        pruebas.append({
-            "Área": "Criptografía y Nube",
-            "Prueba": "Cifrado Estándar Fernet",
-            "Resultado": "⚠️ PENDIENTE",
-            "Detalle": "Falta instalar librería 'cryptography' en requirements.txt."
-        })
+if CRYPTOGRAPHY_OK:
+    datos_prueba = [
+        {
+            "ID": "TEST_ENC",
+            "Sitio / Unidad": "CARAJILLO",
+            "Neto": 5000.0
+        }
+    ]
+
+    clave_t = "ClavePrueba2026!Segura"
+
+    cifrado_str = cifrar_respaldo_seguro(
+        datos_prueba, clave_t
+    )
+
+    dec_ok, msg_ok = descifrar_respaldo_seguro(
+        cifrado_str, clave_t
+    )
+
+    dec_bad, msg_bad = descifrar_respaldo_seguro(
+        cifrado_str, "ClaveErronea"
+    )
+
+    prueba_cifrado = (
+        cifrado_str is not None
+        and dec_ok is not None
+        and dec_ok == datos_prueba
+        and dec_bad is None
+    )
+
+    pruebas.append({
+        "Área": "Criptografía y Nube",
+        "Prueba": "Cifrado Estándar Fernet",
+        "Resultado": "✅ PASS" if prueba_cifrado else "❌ FAIL",
+        "Detalle": (
+            "Cifrado y descifrado correctos."
+            if prueba_cifrado
+            else f"Cifrado o validación fallida: {msg_ok}; {msg_bad}"
+        )
+    })
+
+else:
+    pruebas.append({
+        "Área": "Criptografía y Nube",
+        "Prueba": "Cifrado Estándar Fernet",
+        "Resultado": "⚠️ PENDIENTE",
+        "Detalle": "Falta instalar la librería 'cryptography' en requirements.txt."
+    })
 
     # 2. Disponibilidad de Motor Excel
     motor_disp = "openpyxl" if OPENPYXL_OK else ("xlsxwriter" if XLSXWRITER_OK else "Ninguno")
