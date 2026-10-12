@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+ # -*- coding: utf-8 -*-
 """
 CLUB PARK VALET Y ESTACIONAMIENTOS S.A. DE C.V.
 Sistema Inteligente de Control Operativo, Auditoría Automatizada y Rentabilidad
@@ -859,20 +859,24 @@ if "costo_boleto_input" not in st.session_state:
     st.session_state["costo_boleto_input"] = 40
 
             opciones_rep = [
-            (
-                f"{r.get('ID')} | {r.get('Fecha')} | "
-                f"{r.get('Sitio / Unidad')} | "
-                f"Neto: ${r.get('Ingreso Neto', 0):,.2f}"
-            )
-            for r in st.session_state.registros
-        ]
+    (
+        f"{r.get('ID')} | {r.get('Fecha')} | "
+        f"{r.get('Sitio / Unidad')} | "
+        f"Neto: ${r.get('Ingreso Neto', 0):,.2f}"
+    )
+    for r in st.session_state.registros
+]
 
-        if opciones_rep:
-            sel_rep = st.selectbox(
-                "Seleccionar reporte:",
-                opciones_rep,
-                key="sel_rep_gest"
-            )
+if opciones_rep:
+    sel_rep = st.selectbox(
+        "Seleccionar reporte:",
+        opciones_rep,
+        key="sel_rep_gest"
+    )
+    idx_rep = opciones_rep.index(sel_rep)
+    rep_data = st.session_state.registros[idx_rep]
+else:
+    st.info("No hay reportes para gestionar.")
 
             idx_rep = opciones_rep.index(sel_rep)
             rep_data = st.session_state.registros[idx_rep]
