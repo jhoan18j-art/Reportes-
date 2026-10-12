@@ -1,3 +1,5 @@
+openpyxl
+xlsxwriter
 streamlit>=1.40
 pandas>=2.2
 openpyxl>=3.1
