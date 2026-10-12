@@ -610,7 +610,6 @@ pruebas.append({
         f"Detección: {res_foto['datos_extraidos']}."
     )
 })
-
 return pruebas
 # =========================================================================
 # CONFIGURACIÓN DE SUCURSALES Y PRECIOS
