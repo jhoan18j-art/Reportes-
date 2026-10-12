@@ -534,57 +534,168 @@ else:
         "Área": "Entorno y Dependencias",
         "Prueba": "Disponibilidad de Motor Excel",
         "Resultado": "✅ PASS" if p_motor else "❌ FAIL",
-        "Detalle": f"Motor activo: {motor_disp} (openpyxl: {OPENPYXL_OK}, xlsxwriter: {XLSXWRITER_OK})."
-    })
+=========================================================================
 
-    # 3. Generación de Excel Multi-Pestaña
-    mock_excel_data = [{
-        "ID": "TEST_EXCEL", "Fecha": "11/10/2026", "Sitio / Unidad": "CARAJILLO",
-        "Horario": "13:00 a 23:00", "Costo Boleto": 100.0, "Folio Inicial": 1, "Folio Final": 50,
-        "Total Boletos": 50, "Sin Cobro": 2, "Cancelados": 1, "Perdidos": 0, "Boletos Cobrados": 47,
-        "Ingreso Bruto": 4700.0, "Gastos Especiales": 200.0, "Gastos Generales / Nómina": 1500.0,
-        "Total Gastos": 1700.0, "Ingreso Neto": 3000.0, "Margen (%)": 63.83, "Rentabilidad": "🟢 Alta",
-        "Elaboró": "Test", "Recibe": "Auditor", "Tipo": "Operación Regular", "foto_path": None
+BATERÍA DE PRUEBAS DE REGRESIÓN Y DIAGNÓSTICO DE DESPLIEGUE
+
+=========================================================================
+
+def ejecutar_pruebas_regresion():
+"""Ejecuta pruebas de regresión técnica y funcional."""
+pruebas = []
+
+# 1. Criptografía Estándar Fernet
+if CRYPTOGRAPHY_OK:
+    datos_prueba = [{
+        "ID": "TEST_ENC",
+        "Sitio / Unidad": "CARAJILLO",
+        "Neto": 5000.0
     }]
-    excel_bin, estado_ex = generar_excel_completo(mock_excel_data)
-    p3 = (estado_ex == "OK" and excel_bin is not None and len(excel_bin) > 2000)
-    pruebas.append({
-        "Área": "Entregables Excel",
-        "Prueba": "Generación de libro Excel multi-pestaña (Semanal, Mensual, Detalle)",
-        "Resultado": "✅ PASS" if p3 else "❌ FAIL",
-        "Detalle": f"Estado: {estado_ex} | Tamaño generado: {len(excel_bin) if excel_bin else 0} bytes."
-    })
 
-    # 4. Cálculos Financieros y Boletos
-    tot_bol = (50 - 1) + 1
-    cobrados = tot_bol - 2 - 1
-    bruto = cobrados * 100.0
-    gastos = 1700.0
-    neto = bruto - gastos
-    margen = (neto / bruto) * 100
-    p4 = (cobrados == 47 and bruto == 4700.0 and neto == 3000.0 and round(margen, 2) == 63.83)
-    pruebas.append({
-        "Área": "Finanzas y Margen",
-        "Prueba": "Cálculo exacto de folios, cobrados, bruto, egresos y margen",
-        "Resultado": "✅ PASS" if p4 else "❌ FAIL",
-        "Detalle": f"Folios calculados: 47 cobrados, $4,700 bruto, $3,000 neto ({margen:.2f}%)."
-    })
+    clave_t = "ClavePrueba2026!Segura"
+    cifrado_str = cifrar_respaldo_seguro(datos_prueba, clave_t)
 
-    # 5. Semáforos de Rentabilidad
-    p5 = (
-        "Alta" in evaluar_rentabilidad(45.0) and
-        "Moderada" in evaluar_rentabilidad(20.0) and
-        "Baja" in evaluar_rentabilidad(5.0) and
-        "Pérdida" in evaluar_rentabilidad(-5.0)
+    dec_ok, msg_ok = descifrar_respaldo_seguro(
+        cifrado_str, clave_t
     )
+    dec_bad, msg_bad = descifrar_respaldo_seguro(
+        cifrado_str, "ClaveErronea"
+    )
+
+    prueba_cifrado = (
+        cifrado_str is not None
+        and dec_ok is not None
+        and dec_ok == datos_prueba
+        and dec_bad is None
+    )
+
     pruebas.append({
-        "Área": "Clasificación de Negocio",
-        "Prueba": "Semáforos de Rentabilidad (Alta, Moderada, Baja, Pérdida)",
-        "Resultado": "✅ PASS" if p5 else "❌ FAIL",
-        "Detalle": "Validación de márgenes >=40% (Alta), 15-39% (Moderada), 0-14% (Baja), <0% (Pérdida)."
+        "Área": "Criptografía y Nube",
+        "Prueba": "Cifrado Estándar Fernet",
+        "Resultado": "✅ PASS" if prueba_cifrado else "❌ FAIL",
+        "Detalle": (
+            "Cifrado y descifrado correctos."
+            if prueba_cifrado
+            else f"Validación fallida: {msg_ok}; {msg_bad}"
+        )
+    })
+else:
+    pruebas.append({
+        "Área": "Criptografía y Nube",
+        "Prueba": "Cifrado Estándar Fernet",
+        "Resultado": "⚠️ PENDIENTE",
+        "Detalle": (
+            "Falta instalar la librería 'cryptography' "
+            "en requirements.txt."
+        )
     })
 
-    # 6. Validación de Fotografía
+# 2. Disponibilidad de Motor Excel
+motor_disp = (
+    "openpyxl" if OPENPYXL_OK
+    else ("xlsxwriter" if XLSXWRITER_OK else "Ninguno")
+)
+p_motor = OPENPYXL_OK or XLSXWRITER_OK
+
+pruebas.append({
+    "Área": "Entorno y Dependencias",
+    "Prueba": "Disponibilidad de Motor Excel",
+    "Resultado": "✅ PASS" if p_motor else "❌ FAIL",
+    "Detalle": (
+        f"Motor activo: {motor_disp} "
+        f"(openpyxl: {OPENPYXL_OK}, "
+        f"xlsxwriter: {XLSXWRITER_OK})."
+    )
+})
+
+# 3. Generación de Excel Multi-Pestaña
+mock_excel_data = [{
+    "ID": "TEST_EXCEL",
+    "Fecha": "11/10/2026",
+    "Sitio / Unidad": "CARAJILLO",
+    "Horario": "13:00 a 23:00",
+    "Costo Boleto": 100.0,
+    "Folio Inicial": 1,
+    "Folio Final": 50,
+    "Total Boletos": 50,
+    "Sin Cobro": 2,
+    "Cancelados": 1,
+    "Perdidos": 0,
+    "Boletos Cobrados": 47,
+    "Ingreso Bruto": 4700.0,
+    "Gastos Especiales": 200.0,
+    "Gastos Generales / Nómina": 1500.0,
+    "Total Gastos": 1700.0,
+    "Ingreso Neto": 3000.0,
+    "Margen (%)": 63.83,
+    "Rentabilidad": "🟢 Alta",
+    "Elaboró": "Test",
+    "Recibe": "Auditor",
+    "Tipo": "Operación Regular",
+    "foto_path": None
+}]
+
+excel_bin, estado_ex = generar_excel_completo(mock_excel_data)
+p3 = (
+    estado_ex == "OK"
+    and excel_bin is not None
+    and len(excel_bin) > 2000
+)
+
+pruebas.append({
+    "Área": "Entregables Excel",
+    "Prueba": "Generación de libro Excel multi-pestaña",
+    "Resultado": "✅ PASS" if p3 else "❌ FAIL",
+    "Detalle": (
+        f"Estado: {estado_ex} | Tamaño generado: "
+        f"{len(excel_bin) if excel_bin else 0} bytes."
+    )
+})
+
+# 4. Cálculos Financieros y Boletos
+tot_bol = (50 - 1) + 1
+cobrados = tot_bol - 2 - 1
+bruto = cobrados * 100.0
+gastos = 1700.0
+neto = bruto - gastos
+margen = (neto / bruto) * 100
+
+p4 = (
+    cobrados == 47
+    and bruto == 4700.0
+    and neto == 3000.0
+    and round(margen, 2) == 63.83
+)
+
+pruebas.append({
+    "Área": "Finanzas y Margen",
+    "Prueba": "Cálculo de folios, ingresos, gastos y margen",
+    "Resultado": "✅ PASS" if p4 else "❌ FAIL",
+    "Detalle": (
+        f"Folios cobrados: {cobrados}, bruto: ${bruto:,.2f}, "
+        f"neto: ${neto:,.2f} ({margen:.2f}%)."
+    )
+})
+
+# 5. Semáforos de Rentabilidad
+p5 = (
+    "Alta" in evaluar_rentabilidad(45.0)
+    and "Moderada" in evaluar_rentabilidad(20.0)
+    and "Baja" in evaluar_rentabilidad(5.0)
+    and "Pérdida" in evaluar_rentabilidad(-5.0)
+)
+
+pruebas.append({
+    "Área": "Clasificación de Negocio",
+    "Prueba": "Semáforos de Rentabilidad",
+    "Resultado": "✅ PASS" if p5 else "❌ FAIL",
+    "Detalle": (
+        "Validación de márgenes: >=40% Alta, "
+        "15-39% Moderada, 0-14% Baja y <0% Pérdida."
+    )
+})
+
+# 6. Validación de Fotografía
 img_test = Image.new("RGB", (640, 480), color=(150, 150, 150))
 buf_test = io.BytesIO()
 img_test.save(buf_test, format="JPEG")
@@ -602,7 +713,7 @@ p6 = (
 
 pruebas.append({
     "Área": "Procesamiento de Fotos",
-    "Prueba": "Análisis de integridad, exposición y detección automática en imagen",
+    "Prueba": "Análisis de integridad y detección en imagen",
     "Resultado": "✅ PASS" if p6 else "❌ FAIL",
     "Detalle": (
         f"Resolución: {res_foto['ancho']}x{res_foto['alto']}, "
@@ -610,6 +721,7 @@ pruebas.append({
         f"Detección: {res_foto['datos_extraidos']}."
     )
 })
+
 return pruebas
 # =========================================================================
 # CONFIGURACIÓN DE SUCURSALES Y PRECIOS
