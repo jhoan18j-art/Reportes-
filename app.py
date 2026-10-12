@@ -859,11 +859,9 @@ if "costo_boleto_input" not in st.session_state:
     st.session_state["costo_boleto_input"] = 40
 
             opciones_rep = [
-    (
-        f"{r.get('ID')} | {r.get('Fecha')} | "
-        f"{r.get('Sitio / Unidad')} | "
-        f"Neto: ${r.get('Ingreso Neto', 0):,.2f}"
-    )
+    f"{r.get('ID')} | {r.get('Fecha')} | "
+    f"{r.get('Sitio / Unidad')} | "
+    f"Neto: ${r.get('Ingreso Neto', 0):,.2f}"
     for r in st.session_state.registros
 ]
 
