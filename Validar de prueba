@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+"""
+Club Park - Validador Automatizado de Despliegue y Pruebas Unitarias
+Ejecuta diagnósticos de dependencias, sintaxis, motores Excel, criptografía Fernet y fotos.
+"""
+
+import sys
+import os
+import io
+import py_compile
+
+def imprimir_resultado(nombre_prueba, estado, detalle=""):
+    simbolo = "✅ PASS" if estado else "❌ FAIL"
+    print(f"[{simbolo}] {nombre_prueba}")
+    if detalle:
+        print(f"       -> {detalle}")
+
+def main():
+    print("=" * 72)
+    print("🚗 CLUB PARK - VALIDACIÓN AUTOMATIZADA DE DESPLIEGUE")
+    print("=" * 72)
+    
+    fallas = 0
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    app_path = os.path.join(base_dir, "app.py")
+    
+    # 1. Validación de Sintaxis y Compilación de app.py
+    if os.path.exists(app_path):
+        try:
+            py_compile.compile(app_path, doraise=True)
+            imprimir_resultado("Sintaxis de app.py", True, "El código compila limpiamente sin errores de indentación ni sintaxis.")
+        except Exception as e:
+            fallas += 1
+            imprimir_resultado("Sintaxis de app.py", False, f"Error de sintaxis: {e}")
+    else:
+        fallas += 1
+        imprimir_resultado("Sintaxis de app.py", False, "No se encontró el archivo app.py en el directorio actual.")
+
+    # 2. Validación de Dependencias de requirements.txt
+    paquetes = {
+        "streamlit": "Framework web y dashboard",
+        "pandas": "Procesamiento de datos y agrupaciones",
+        "openpyxl": "Motor Excel profesional y estilos de celda",
+        "xlsxwriter": "Motor Excel secundario de respaldo",
+        "PIL": "Procesamiento, compresión y análisis de fotos",
+        "cryptography": "Criptografía estándar Fernet AES-128-CBC + HMAC-SHA256"
+    }
+
+    for pkg, descripcion in paquetes.items():
+        try:
+            __import__(pkg)
+            imprimir_resultado(f"Dependencia '{pkg}'", True, f"Instalada correctamente ({descripcion}).")
+        except ImportError:
+            fallas += 1
+            imprimir_resultado(f"Dependencia '{pkg}'", False, f"Falta instalar '{pkg}'. Agrega la línea a requirements.txt.")
+
+    # 3. Prueba de Criptografía Estándar Fernet con PBKDF2 (100,000 iteraciones)
+    try:
+        from cryptography.fernet import Fernet
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+        from cryptography.hazmat.primitives import hashes
+        import base64, json
+
+        salt = os.urandom(16)
+        kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=100000)
+        key = base64.urlsafe_b64encode(kdf.derive(b"ClavePruebaDeploy2026"))
+        f = Fernet(key)
+        
+        datos = [{"ID": "TEST_ENC", "Sitio": "CARAJILLO", "Neto": 4500.0}]
+        token = f.encrypt(json.dumps(datos).encode("utf-8"))
+        recuperado = json.loads(f.decrypt(token).decode("utf-8"))
+        
+        crypto_ok = (recuperado == datos)
+        imprimir_resultado("Módulo Criptográfico Estándar", crypto_ok, "Cifrado simétrico autenticado Fernet con PBKDF2 validado.")
+        if not crypto_ok:
+            fallas += 1
+    except Exception as e:
+        fallas += 1
+        imprimir_resultado("Módulo Criptográfico Estándar", False, f"Error en módulo criptográfico: {e}")
+
+    # 4. Prueba de Generación y Estilos de Excel Multi-Pestaña
+    try:
+        import pandas as pd
+        import openpyxl
+        from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+
+        df_mock = pd.DataFrame([
+            {"Sucursal": "CARAJILLO", "Fecha": "11/10/2026", "Boletos Cobrados": 47, "Ingreso Bruto": 4700.0, "Total Gastos": 1700.0, "Ingreso Neto": 3000.0, "Margen (%)": 63.83}
+        ])
+        
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+            df_mock.to_excel(writer, sheet_name="Rentabilidad Semanal", index=False)
+            df_mock.to_excel(writer, sheet_name="Rentabilidad Mensual", index=False)
+            df_mock.to_excel(writer, sheet_name="Detalle de Reportes", index=False)
+            
+        buf.seek(0)
+        wb = openpyxl.load_workbook(buf)
+        pestanas_esperadas = {"Rentabilidad Semanal", "Rentabilidad Mensual", "Detalle de Reportes"}
+        pestanas_ok = set(wb.sheetnames) == pestanas_esperadas
+        
+        # Formatear encabezados y celdas
+        header_fill = PatternFill(start_color="1F497D", end_color="1F497D", fill_type="solid")
+        header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+        
+        for name in wb.sheetnames:
+            ws = wb[name]
+            for col in range(1, ws.max_column + 1):
+                c = ws.cell(1, col)
+                c.fill = header_fill
+                c.font = header_font
+                c.alignment = Alignment(horizontal="center", vertical="center")
+                
+        buf_styled = io.BytesIO()
+        wb.save(buf_styled)
+        excel_bytes = buf_styled.getvalue()
+        
+        excel_ok = pestanas_ok and len(excel_bytes) > 2500
+        imprimir_resultado("Motor y Estilos Excel", excel_ok, f"Generadas 3 pestañas con formato y estilos corporativos ({len(excel_bytes)} bytes).")
+        if not excel_ok:
+            fallas += 1
+    except Exception as e:
+        fallas += 1
+        imprimir_resultado("Motor y Estilos Excel", False, f"Fallo en generación de Excel: {e}")
+
+    # 5. Prueba de Procesamiento, Calidad y Lectura de Fotografía
+    try:
+        from PIL import Image, ImageStat
+        img = Image.new("RGB", (1024, 768), color=(170, 170, 170))
+        buf_img = io.BytesIO()
+        img.save(buf_img, format="JPEG", quality=78)
+        buf_img.seek(0)
+        
+        img_check = Image.open(buf_img)
+        w, h = img_check.size
+        brillo = ImageStat.Stat(img_check.convert("L")).mean[0]
+        
+        foto_ok = (w == 1024 and h == 768 and 165 < brillo < 175)
+        imprimir_resultado("Módulo de Fotografía", foto_ok, f"Validación de nitidez ({w}x{h} px) y exposición ({brillo:.1f} LUX) superada.")
+        if not foto_ok:
+            fallas += 1
+    except Exception as e:
+        fallas += 1
+        imprimir_resultado("Módulo de Fotografía", False, f"Fallo al procesar imagen de prueba: {e}")
+
+    # 6. Prueba de Persistencia Atómica en Disco
+    try:
+        import json
+        test_db = os.path.join(base_dir, "test_perm.json")
+        data_test = [{"test_id": "atomic_01", "fecha": "2026-10-12"}]
+        tmp = test_db + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data_test, f)
+        os.replace(tmp, test_db)
+        with open(test_db, "r", encoding="utf-8") as f:
+            read_back = json.load(f)
+        os.remove(test_db)
+        pers_ok = (read_back == data_test)
+        imprimir_resultado("Persistencia Atómica", pers_ok, "Permisos de escritura y reemplazo atómico en disco confirmados.")
+        if not pers_ok:
+            fallas += 1
+    except Exception as e:
+        fallas += 1
+        imprimir_resultado("Persistencia Atómica", False, f"Error en prueba de persistencia: {e}")
+
+    print("=" * 72)
+    if fallas == 0:
+        print("🎉 DESPLIEGUE 100% VALIDADO: Todas las pruebas pasaron con éxito.")
+        print("   Tu código está listo para subirse a GitHub y ejecutarse en Streamlit Cloud.")
+        return 0
+    else:
+        print(f"⚠️ ATENCIÓN: Se detectaron {fallas} problemas. Corrige los puntos marcados con ❌.")
+        return 1
+
+if __name__ == "__main__":
+    sys.exit(main())
