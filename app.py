@@ -445,8 +445,8 @@ if st.session_state.usuario_autenticado is None:
                 st.success(f"Bienvenido {nombre_usuario}")
                 st.rerun()
             elif nombre_usuario == "Víctor (Contador)" and password == pass_auditor:
-                st.session_state.usuario_autenticado = "Víct Auditor")
-                st.rerun()
+                st.session_state.usuario_autenticado = "Víctor (Auditor")
+                st.reru
             else:
                 st.error("❌ Contraseña incorrecta o usuario no seleccionado.")
     st.stop()
