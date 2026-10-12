@@ -12,14 +12,45 @@ import pandas as pd
 import streamlit as st
 from PIL import Image
 
-# Import opcional para exportación con estilo en Excel
+# Verificación de librerías al inicio de app.py
+OPENPYXL_OK = False
+XLSXWRITER_OK = False
+
 try:
     import openpyxl
-    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-    from openpyxl.utils import get_column_letter
     OPENPYXL_OK = True
 except ImportError:
-    OPENPYXL_OK = False
+    pass
+
+try:
+    import xlsxwriter
+    XLSXWRITER_OK = True
+except ImportError:
+    pass
+
+
+def generar_excel_completo(registros):
+    # Validar que al menos un motor de Excel esté disponible
+    if not OPENPYXL_OK and not XLSXWRITER_OK:
+        st.error(
+            "⚠️ No se encontró ningún motor de Excel instalado (`openpyxl` o `xlsxwriter`). "
+            "Asegúrate de incluir `openpyxl` en tu archivo `requirements.txt` y reiniciar la app."
+        )
+        return None
+
+    engine = "openpyxl" if OPENPYXL_OK else "xlsxwriter"
+
+    try:
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine=engine) as writer:
+            # Aquí va tu lógica para escribir las hojas del reporte
+            df = pd.DataFrame(registros)
+            df.to_excel(writer, index=False, sheet_name="Reportes")
+        return output.getvalue()
+    except Exception as e:
+        st.error(f"⚠️ Ocurrió un error al generar el archivo Excel: {e}")
+        return None
+        
 
 # =========================================================================
 # CONFIGURACIÓN GENERAL Y PERSISTENCIA ATÓMICA EN NUBE
