@@ -189,19 +189,26 @@ def obtener_secreto(clave: str, valor_por_defecto: str) -> str:
     return valor_por_defecto
 
 def calcular_boletos_block100(f_ini: int, f_fin: int) -> int:
+    """Conteo inclusivo y cíclico de folios cuyo consecutivo se reinicia cada 100.
+    Ej.: 595→303 equivale a 95→03 y son 9 boletos.
     """
-    Calcula boletos vendidos cuando los blocks son de 100 boletos
-    y solo se cuentan los últimos 2 dígitos (módulo 100).
-    Ejemplo: folio inicial 595 y folio final 303 -> 9 boletos (95 al 03).
-    """
-    if f_ini <= 0 and f_fin <= 0:
+    inicio, fin = int(f_ini), int(f_fin)
+    if inicio < 0 or fin < 0 or (inicio == 0 and fin == 0):
         return 0
-    d_ini = int(f_ini) % 100
-    d_fin = int(f_fin) % 100
-    if d_fin >= d_ini:
-        return (d_fin - d_ini) + 1
-    else:
-        return (100 - d_ini) + d_fin + 1
+    d_ini, d_fin = inicio % 100, fin % 100
+    return ((d_fin - d_ini) % 100) + 1
+
+
+def obtener_tarifa_sucursal(sucursal: str, tarifa_ocr=None) -> float:
+    """Usa tarifa OCR si es válida; de lo contrario el catálogo de la sucursal."""
+    precio_catalogo = float(PRECIOS_SUCURSALES.get(sucursal, 0) or 0)
+    try:
+        precio_ocr = float(tarifa_ocr)
+        if precio_ocr > 0:
+            return precio_ocr
+    except (TypeError, ValueError):
+        pass
+    return precio_catalogo
 
 def generar_enlace_whatsapp(telefono: str, mensaje: str) -> str:
     """Genera URL wa.me para enviar mensajes y recordatorios directamente desde cualquier Android/PC."""
@@ -464,7 +471,8 @@ def evaluar_auditoria_reporte(reporte_dict, registros_existentes=None, memoria_i
         if tarifa_catalogo > 0 and costo_bol > 0 and abs(costo_bol - tarifa_catalogo) > 0.01:
             observaciones.append(f"📌 Tarifa capturada (${costo_bol:,.2f}) distinta a la tarifa de referencia del catálogo (${tarifa_catalogo:,.2f}); confirmar antes de aprobar.")
 
-        # 3. Regla de Cuadre Neto
+    
+    # 3. Regla de Cuadre Neto
     neto_esperado = bruto - tot_gastos
     if abs(neto - neto_esperado) > 1.0:
         score -= 25
@@ -903,6 +911,16 @@ def generar_excel_completo(registros, historial_auditoria=None):
 def ejecutar_pruebas_regresion():
     pruebas = []
 
+    casos_folios = [(595, 303, 9), (1, 50, 50), (100, 100, 1), (198, 3, 6), (0, 0, 0)]
+    ok_folios = all(calcular_boletos_block100(a, b) == esperado for a, b, esperado in casos_folios)
+    ok_tarifas = all(obtener_tarifa_sucursal(s) == float(t) for s, t in PRECIOS_SUCURSALES.items())
+    pruebas.append({
+        "Área": "Folios y Tarifas",
+        "Prueba": "Cálculo cíclico inclusivo y tarifa de catálogo por sucursal",
+        "Resultado": "✅ PASS" if ok_folios and ok_tarifas else "❌ FAIL",
+        "Detalle": f"595→303={calcular_boletos_block100(595, 303)}; {len(PRECIOS_SUCURSALES)} tarifas verificadas."
+    })
+
     # 1. Criptografía Estándar Fernet
     if CRYPTOGRAPHY_OK:
         d_test = [{"ID": "T_ENC", "Neto": 5000.0}]
@@ -995,7 +1013,10 @@ if "usuario_autenticado" not in st.session_state:
 def on_sucursal_change():
     seleccion = st.session_state.get("select_sitio")
     if seleccion in PRECIOS_SUCURSALES:
-        st.session_state["costo_boleto_input"] = PRECIOS_SUCURSALES[seleccion]
+        tarifa = obtener_tarifa_sucursal(seleccion)
+        # Streamlit ejecuta el callback antes de construir los widgets de este rerun.
+        st.session_state["costo_boleto_final_in"] = tarifa
+        st.session_state["costo_boleto_input"] = tarifa
 
 if "costo_boleto_input" not in st.session_state:
     st.session_state["costo_boleto_input"] = 40
@@ -1140,6 +1161,7 @@ for reg in st.session_state.registros:
             pass
 
 if eventos_proximos:
+    st.caption("Las alertas se evalúan cuando Streamlit ejecuta la página; no son notificaciones push y no se garantizan si la app/navegador está cerrado.")
     for ev_reg, dt_ev, mins in eventos_proximos:
         if mins > 0:
             st.error(f"🚨 **¡ALARMA DE EVENTO EXTRAORDINARIO EN 2 HORAS!** Sucursal: **{ev_reg.get('Sitio / Unidad')}** | Inicia a las **{dt_ev.strftime('%H:%M')}** (en aprox. {mins} minutos). Responsable: {ev_reg.get('Elaboró')}.")
@@ -1202,6 +1224,28 @@ with tab1:
             )
             datos_auto = analisis_foto.get("datos_extraidos", {})
 
+        # Aplicar cada foto nueva una sola vez: OCR rellena campos, pero el usuario
+        # conserva sus cambios mientras siga trabajando con la misma imagen.
+        foto_sig = f"{getattr(foto_cargada, 'name', 'camera')}:{getattr(foto_cargada, 'size', 0)}"
+        if st.session_state.get("_foto_auto_aplicada") != foto_sig:
+            suc_ocr = datos_auto.get("sucursal")
+            if suc_ocr in PRECIOS_SUCURSALES:
+                st.session_state["select_sitio"] = suc_ocr
+                st.session_state["costo_boleto_final_in"] = obtener_tarifa_sucursal(
+                    suc_ocr, datos_auto.get("costo_boleto")
+                )
+            if "folio_inicial" in datos_auto:
+                st.session_state["in_f_ini_f"] = int(datos_auto["folio_inicial"])
+            if "folio_final" in datos_auto:
+                st.session_state["in_f_fin_f"] = int(datos_auto["folio_final"])
+            if "sin_cobro" in datos_auto:
+                st.session_state["in_f_sc_f"] = int(datos_auto["sin_cobro"])
+            if "cancelados" in datos_auto:
+                st.session_state["in_f_canc_f"] = int(datos_auto["cancelados"])
+            if "gastos_nomina" in datos_auto:
+                st.session_state["g_gen_f"] = float(datos_auto["gastos_nomina"])
+            st.session_state["_foto_auto_aplicada"] = foto_sig
+
         col_prev, col_info_ia = st.columns([1, 2])
         with col_prev:
             st.image(foto_cargada, caption="Fotografía procesada", use_container_width=True)
@@ -1244,6 +1288,11 @@ with tab1:
             idx_s = SUCURSALES_LISTA.index(datos_auto["sucursal"])
 
         if "select_sitio" not in st.session_state: st.session_state["select_sitio"] = SUCURSALES_LISTA[idx_s]
+        # Al iniciar formulario o al entrar con OCR, que el widget refleje tarifa catálogo.
+        if st.session_state.get("select_sitio") in PRECIOS_SUCURSALES and "costo_boleto_final_in" not in st.session_state:
+            st.session_state["costo_boleto_final_in"] = obtener_tarifa_sucursal(
+                st.session_state["select_sitio"], datos_auto.get("costo_boleto")
+            )
         sucursal_sel = st.selectbox(
             "Sucursal / Unidad:",
             SUCURSALES_LISTA,
@@ -1257,11 +1306,15 @@ with tab1:
             st.info("📌 Modalidad: Cobro directo de Ingreso Bruto sin control por folio.")
             costo_boleto_final = 0.0
         else:
-            costo_sugerido = datos_auto.get("costo_boleto", PRECIOS_SUCURSALES.get(sucursal_sel, 40))
+            # Si OCR no detectó tarifa, aplicar siempre el precio del catálogo.
+            if not st.session_state.get("costo_boleto_final_in"):
+                st.session_state["costo_boleto_final_in"] = obtener_tarifa_sucursal(
+                    sucursal_sel, datos_auto.get("costo_boleto")
+                )
             costo_boleto_final = st.number_input(
                 "Tarifa por Boleto ($ MXN):",
-                min_value=0,
-                step=5,
+                min_value=0.0,
+                step=5.0,
                 key="costo_boleto_final_in"
             )
 
@@ -1306,7 +1359,7 @@ with tab1:
         with c_num3:
             f_per_final = st.number_input("Boletos Perdidos:", min_value=0, step=1, key="in_f_perd_f")
 
-        tot_bol_calc = max(0, (int(f_fin_final) - int(f_ini_final)) + 1) if int(f_fin_final) >= int(f_ini_final) and int(f_ini_final) > 0 else 0
+        tot_bol_calc = calcular_boletos_block100(int(f_ini_final), int(f_fin_final))
         cobrados_calc = max(0, tot_bol_calc - int(f_sin_final) - int(f_can_final))
         bruto_calc = cobrados_calc * float(costo_boleto_final)
 
@@ -1682,7 +1735,7 @@ if es_contador:
     # TAB 5: WhatsApp y Alarmas
     with tab5:
         st.markdown("### 📲 Monitoreo de Reportes Faltantes y Notificaciones WhatsApp")
-        st.markdown("Calcula automáticamente los reportes pendientes por subir de cada supervisor según sus unidades asignadas y permite enviar recordatorios de 1 clic a sus teléfonos.")
+        st.markdown("Calcula los reportes pendientes de las sucursales asignadas. Los botones preparan el mensaje y abren WhatsApp; el envío requiere confirmar en WhatsApp. Para envío automático cuando la app no está abierta se requiere un programador persistente y WhatsApp Business API.")
 
         # Conteo de reportes faltantes por supervisor para la fecha actual (o seleccionada)
         col_w_fec, col_w_tel = st.columns(2)
@@ -1691,8 +1744,8 @@ if es_contador:
             fec_mon_str = fec_monitoreo.strftime("%d/%m/%Y")
         with col_w_tel:
             st.caption("Configuración de teléfonos móviles para envío directo de WhatsApp:")
-            tel_jesus = st.text_input("Teléfono José de Jesús (WhatsApp):", value="525500000000", key="tel_jes_in")
-            tel_victor = st.text_input("Teléfono Víctor Manuel (WhatsApp):", value="525500000001", key="tel_vic_in")
+            tel_jesus = st.text_input("Teléfono José de Jesús (WhatsApp, con clave de país):", value="", key="tel_jes_in", placeholder="Ej. 52 + 10 dígitos")
+            tel_victor = st.text_input("Teléfono Víctor Manuel (WhatsApp, con clave de país):", value="", key="tel_vic_in", placeholder="Ej. 52 + 10 dígitos")
 
         # Reportes existentes en esa fecha
         reps_fecha = [r for r in st.session_state.registros if r.get("Fecha") == fec_mon_str]
@@ -1707,8 +1760,11 @@ if es_contador:
             if faltantes_jesus:
                 st.warning(f"Unidades pendientes de subir: {', '.join(faltantes_jesus)}")
                 msg_j = f"Hola Jesús, te recordamos que para la fecha {fec_mon_str} tienes {len(faltantes_jesus)} reporte(s) pendiente(s) por subir a CLUB PARK: {', '.join(faltantes_jesus)}. Favor de cargarlos a la brevedad."
-                url_w_j = generar_enlace_whatsapp(tel_jesus, msg_j)
-                st.link_button("📲 Enviar Recordatorio WhatsApp a Jesús", url_w_j, use_container_width=True)
+                if len("".join(ch for ch in tel_jesus if ch.isdigit())) >= 10:
+                    url_w_j = generar_enlace_whatsapp(tel_jesus, msg_j)
+                    st.link_button("📲 Abrir recordatorio para WhatsApp de Jesús", url_w_j, use_container_width=True)
+                else:
+                    st.info("Agrega el número real de WhatsApp de Jesús para generar el recordatorio.")
             else:
                 st.success("✅ Jesús tiene todas sus unidades cubiertas al 100%.")
 
@@ -1717,8 +1773,11 @@ if es_contador:
             if faltantes_victor:
                 st.warning(f"Unidades pendientes de subir: {', '.join(faltantes_victor)}")
                 msg_v = f"Hola Víctor, te recordamos que para la fecha {fec_mon_str} tienes {len(faltantes_victor)} reporte(s) pendiente(s) por subir a CLUB PARK: {', '.join(faltantes_victor)}. Favor de cargarlos a la brevedad."
-                url_w_v = generar_enlace_whatsapp(tel_victor, msg_v)
-                st.link_button("📲 Enviar Recordatorio WhatsApp a Víctor", url_w_v, use_container_width=True)
+                if len("".join(ch for ch in tel_victor if ch.isdigit())) >= 10:
+                    url_w_v = generar_enlace_whatsapp(tel_victor, msg_v)
+                    st.link_button("📲 Abrir recordatorio para WhatsApp de Víctor", url_w_v, use_container_width=True)
+                else:
+                    st.info("Agrega el número real de WhatsApp de Víctor para generar el recordatorio.")
             else:
                 st.success("✅ Víctor tiene todas sus unidades cubiertas al 100%.")
 
@@ -1811,5 +1870,3 @@ if not es_contador:
                 st.info(f"📍 **{ev.get('Sitio / Unidad')}** | Fecha: **{ev.get('Fecha')}** ({ev.get('Horario')}) | Responsable: {ev.get('Elaboró')}")
         else:
             st.caption("No hay eventos programados en este momento.")
-               
-        
