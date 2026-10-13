@@ -858,12 +858,21 @@ def on_sucursal_change():
 if "costo_boleto_input" not in st.session_state:
     st.session_state["costo_boleto_input"] = 40
 
-            opciones_rep = [
-    f"{r.get('ID')} | {r.get('Fecha')} | "
-    f"{r.get('Sitio / Unidad')} | "
-    f"Neto: ${r.get('Ingreso Neto', 0):,.2f}"
-    for r in st.session_state.registros
-]
+      with tab_reportes:
+    st.subheader("Reportes")
+
+    opciones_rep = [
+        f"{r.get('ID')} | {r.get('Fecha')} | "
+        f"{r.get('Sitio / Unidad')} | "
+        f"Neto: ${r.get('Ingreso Neto', 0) or 0:,.2f}"
+        for r in st.session_state.registros
+    ]
+
+    if opciones_rep:
+        seleccion = st.selectbox("Selecciona un registro", opciones_rep)
+    else:
+        st.info("Todavía no hay registros guardados.")
+     
 
 if opciones_rep:
     sel_rep = st.selectbox(
