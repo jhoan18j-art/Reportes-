@@ -1572,8 +1572,7 @@ else:
         else:
             st.info("Aún no has registrado reportes bajo tu usuario.")
 
-#
-=========================================================================
+# =========================================================================
 # TABS EXCLUSIVOS AUDITOR (EVENTOS, GESTIÓN, DESPLIEGUE)
 # =========================================================================
 if es_contador:
@@ -1682,7 +1681,7 @@ if es_contador:
         else:
             st.info("No hay reportes para gestionar.")
 
-    # TAB 6: Suite de Pruebas y Diagnóstico de Despliegue
+        # TAB 6: Suite de Pruebas y Diagnóstico de Despliegue
     with tab6:
         st.markdown("### 🧪 Diagnóstico Automatizado del Sistema y Despliegue")
         st.markdown("Ejecuta la batería de pruebas unitarias para validar que el motor de Excel, la criptografía Fernet, la auditoría automática y la memoria de IA operan al 100%.")
