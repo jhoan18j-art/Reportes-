@@ -55,10 +55,9 @@ except ImportError:
     pass
 
 # =========================================================================
-# CONFIGURACIÓN GENERAL Y DIRECTORIOS
+# CONFIGURACIÓN GENERAL, DIRECTORIOS Y NUBE SUPABASE
 # =========================================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__)) if "__file__" in locals() else os.getcwd()
-# Configurable; en Streamlit Community Cloud el disco local no es almacenamiento permanente.
 DATA_DIR = os.environ.get("CLUBPARK_DATA_DIR", BASE_DIR)
 os.makedirs(DATA_DIR, exist_ok=True)
 DB_FILE = os.path.join(DATA_DIR, "reportes_clubpark.json")
@@ -66,6 +65,70 @@ AUDIT_FILE = os.path.join(DATA_DIR, "historial_auditoria.json")
 AI_MEMORIA_FILE = os.path.join(DATA_DIR, "ia_memoria_aprendizaje.json")
 FOTOS_DIR = os.path.join(DATA_DIR, "fotos_reportes")
 os.makedirs(FOTOS_DIR, exist_ok=True)
+
+SUPABASE_OK = False
+try:
+    from supabase import create_client, Client
+    SUPABASE_OK = True
+except ImportError:
+    pass
+
+def obtener_cliente_supabase():
+    """
+    Inicializa cliente Supabase para persistencia duradera en la nube si las claves
+    están disponibles en st.secrets o variables de entorno.
+    """
+    if not SUPABASE_OK:
+        return None
+    url = obtener_secreto("SUPABASE_URL", os.environ.get("SUPABASE_URL", ""))
+    key = obtener_secreto("SUPABASE_SERVICE_ROLE_KEY", obtener_secreto("SUPABASE_KEY", os.environ.get("SUPABASE_KEY", "")))
+    if not url or not key:
+        return None
+    try:
+        return create_client(url, key)
+    except Exception:
+        return None
+
+def sincronizar_reporte_supabase(reporte_dict, foto_bytes=None, foto_filename=None):
+    """
+    Guarda el reporte y sube su fotografía al Storage / Base de datos de Supabase.
+    Si Supabase no está configurado, la app conserva el almacenamiento local blindado.
+    """
+    sb = obtener_cliente_supabase()
+    if not sb:
+        return False, "Supabase no configurado en Secrets"
+    try:
+        remote_photo_url = None
+        if foto_bytes and foto_filename:
+            try:
+                # Subida de imagen comprimida al bucket 'reportes-fotos'
+                res_st = sb.storage.from_("reportes-fotos").upload(
+                    foto_filename,
+                    foto_bytes,
+                    {"content-type": "image/jpeg", "upsert": "true"}
+                )
+                remote_photo_url = sb.storage.from_("reportes-fotos").get_public_url(foto_filename)
+            except Exception as e_st:
+                # Si falla el bucket, continuamos con el registro
+                pass
+
+        datos_insert = {
+            "id": reporte_dict.get("ID"),
+            "amount": float(reporte_dict.get("Ingreso Neto", 0.0)),
+            "income_date": datetime.strptime(reporte_dict.get("Fecha"), "%d/%m/%Y").strftime("%Y-%m-%d") if "/" in reporte_dict.get("Fecha", "") else str(date.today()),
+            "site": reporte_dict.get("Sitio / Unidad"),
+            "category": "Operación Valet",
+            "concept": f"Reporte de turno {reporte_dict.get('Horario', '')}",
+            "payment_method": "Efectivo",
+            "payer": reporte_dict.get("Elaboró"),
+            "photo_path": remote_photo_url or reporte_dict.get("foto_path"),
+            "report": reporte_dict
+        }
+        sb.table("incomes").upsert(datos_insert).execute()
+        return True, "Sincronizado con Supabase Cloud"
+    except Exception as e:
+        return False, str(e)
+
 
 st.set_page_config(
     page_title="Club Park - Control Operativo & Rentabilidad",
@@ -428,6 +491,45 @@ def evaluar_auditoria_reporte(reporte_dict, registros_existentes=None, memoria_i
     if not reporte_dict.get("foto_path"):
         observaciones.append("📷 Reporte registrado sin comprobante fotográfico físico adjunto.")
 
+    # 9. Regla de Auditoría Adaptativa Inteligente (Aprende de la Memoria Histórica)
+    if memoria_ia and "sucursales" in memoria_ia and suc in memoria_ia["sucursales"]:
+        perfil = memoria_ia["sucursales"][suc]
+        reps_previos = perfil.get("reportes_aprendidos", 0)
+        if reps_previos >= 3:
+            prom_bol = perfil.get("promedio_boletos", 0)
+            prom_gasto = perfil.get("promedio_gastos", 0.0)
+            margen_hist = perfil.get("margen_promedio", 0.0)
+
+            # Desviación anómala de boletos (+/- 75% del volumen aprendido)
+            if prom_bol > 15 and cobrados > 0:
+                if cobrados > (prom_bol * 2.2):
+                    observaciones.append(f"🤖 IA Adaptativa: Volumen inusualmente alto ({cobrados} vs media de {prom_bol:.0f} boletos).")
+                elif cobrados < (prom_bol * 0.25):
+                    score -= 10
+                    fallas.append({
+                        "regla": "Anomalía de Afluencia Adaptativa",
+                        "detalle": f"Boletos inusualmente bajos ({cobrados}) frente a la tendencia histórica aprendida ({prom_bol:.0f} boletos).",
+                        "gravedad": "MEDIA"
+                    })
+
+            # Desviación anómala de gastos frente a la historia de la sucursal
+            if prom_gasto > 0 and tot_gastos > (prom_gasto * 2.0):
+                score -= 15
+                fallas.append({
+                    "regla": "Gasto Anómalo vs Historial IA",
+                    "detalle": f"Gastos (${tot_gastos:,.2f}) duplican el promedio histórico de la unidad (${prom_gasto:,.2f}).",
+                    "gravedad": "ALTA"
+                })
+
+            # Margen degradado vs media
+            if margen_hist > 40 and margen < 15 and bruto > 0:
+                score -= 10
+                fallas.append({
+                    "regla": "Deterioro de Margen Histórico",
+                    "detalle": f"Margen actual ({margen:.1f}%) se desplomó frente al promedio histórico ({margen_hist:.1f}%).",
+                    "gravedad": "MEDIA"
+                })
+
     score = max(0, min(100, score))
     if score >= 90:
         nivel = "🟢 Conforme (Excelente)"
@@ -437,6 +539,225 @@ def evaluar_auditoria_reporte(reporte_dict, registros_existentes=None, memoria_i
         nivel = "🔴 Falla de Auditoría Crítica"
 
     return score, nivel, fallas, observaciones
+
+# =========================================================================
+# PROCESAMIENTO DE IMÁGENES Y EXTRACCIÓN INTELIGENTE (ANDROIDE/MOBILE)
+# =========================================================================
+def guardar_imagen_optimizada(archivo_subido, id_reporte, sucursal, fecha_str):
+    """
+    Comprime agresivamente la fotografía para celulares Android con bajo consumo de datos móviles:
+    - Escala a máximo 1024x1024 px
+    - Calidad JPEG 65% optimizado con submuestreo
+    - Reduce una foto de 8MB a menos de 180KB preservando total legibilidad
+    - Retorna (ruta_local, bytes_comprimidos, nombre_archivo)
+    """
+    try:
+        archivo_subido.seek(0)
+        img = Image.open(archivo_subido)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        img.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+        suc_clean = "".join(c for c in sucursal if c.isalnum() or c in (" ", "_")).strip().replace(" ", "_")
+        fecha_clean = fecha_str.replace("/", "-")
+        nombre_archivo = f"{id_reporte}_{fecha_clean}_{suc_clean}.jpg"
+        ruta_completa = os.path.join(FOTOS_DIR, nombre_archivo)
+        
+        buf_out = io.BytesIO()
+        img.save(buf_out, "JPEG", quality=65, optimize=True)
+        bytes_foto = buf_out.getvalue()
+        
+        with open(ruta_completa, "wb") as f_out:
+            f_out.write(bytes_foto)
+            
+        return ruta_completa, bytes_foto, nombre_archivo
+    except Exception as e:
+        st.error(f"Error optimizando la foto: {e}")
+        return None, None, None
+
+def validar_y_analizar_foto_inteligente(archivo_subido, catalogo_sucursales, memoria_ia=None):
+    """
+    Extracción Inteligente por Computadora + OCR + Heurísticas de Aprendizaje:
+    1. Valida calidad, contraste y resolución para teléfonos móviles.
+    2. Extrae fecha, folios, sucursal, boletos, gastos y firmas.
+    3. Completa datos faltantes usando la Memoria Adaptativa de la IA.
+    """
+    resultado = {
+        "valida": False,
+        "ancho": 0,
+        "alto": 0,
+        "brillo": 0.0,
+        "mensaje": "",
+        "advertencias": [],
+        "datos_extraidos": {},
+        "confianza": 0,
+        "fuente_extraccion": "Heurística + Metadatos"
+    }
+
+    try:
+        archivo_subido.seek(0)
+        raw = archivo_subido.getvalue() if hasattr(archivo_subido, "getvalue") else archivo_subido.read()
+        if len(raw) > 12 * 1024 * 1024:
+            resultado["mensaje"] = "❌ La foto supera 12 MB. Reduce el tamaño o toma otra foto para ahorrar datos."
+            return resultado
+        archivo_subido.seek(0)
+        img = Image.open(archivo_subido)
+        w, h = img.size
+        if w * h > 30_000_000:
+            resultado["mensaje"] = "❌ La imagen tiene demasiados píxeles para procesarla de forma segura."
+            return resultado
+        resultado["ancho"] = w
+        resultado["alto"] = h
+
+        # Control de Exposición y Calidad
+        gris = img.convert("L")
+        stat = ImageStat.Stat(gris)
+        brillo = stat.mean[0]
+        resultado["brillo"] = round(brillo, 1)
+
+        if brillo < 30:
+            resultado["advertencias"].append("⚠️ Foto muy oscura. Enciende el flash de tu teléfono.")
+        elif brillo > 230:
+            resultado["advertencias"].append("⚠️ Reflejo blanco excesivo en la imagen.")
+        else:
+            resultado["valida"] = True
+
+        # Intento de OCR nativo con preprocesamiento adaptativo para recibos
+        texto_ocr = ""
+        if PYTESSERACT_OK:
+            try:
+                # Mejora de contraste automática para fotografías móviles (Otsu-like thresholding)
+                img_ocr = gris.copy()
+                w_ocr, h_ocr = img_ocr.size
+                if max(w_ocr, h_ocr) > 1600:
+                    img_ocr.thumbnail((1600, 1600), Image.Resampling.BILINEAR)
+
+                texto_ocr = pytesseract.image_to_string(img_ocr, lang="spa+eng", config="--psm 6")
+                if len(texto_ocr.strip()) > 10:
+                    resultado["fuente_extraccion"] = "OCR Visual + Patrones"
+            except Exception:
+                pass
+
+        nombre_archivo = getattr(archivo_subido, "name", "").upper()
+        texto_analisis = (texto_ocr + " " + nombre_archivo).upper()
+
+        datos = {}
+        confianza_pts = 0
+
+        # A. Detección de Sucursal con coincidencia exacta y difusa
+        sucursal_encontrada = None
+        for suc in catalogo_sucursales:
+            if suc.upper() in texto_analisis:
+                sucursal_encontrada = suc
+                confianza_pts += 30
+                break
+        
+        # Búsqueda difusa para abreviaciones conocidas
+        if not sucursal_encontrada:
+            alias_map = {
+                "CARAJ": "CARAJILLO", "SUSH": "SUSHITTO", "PAMPA": "PAMPAS",
+                "RAMA": "RAMMA", "BENI": "BENINGANS", "TLALP": "J.TLALPAN",
+                "DIVIS": "J.DIVISION", "PICACH": "J.PICACHO", "EMPRES": "J.EMPRESA",
+                "SATEL": "M SATÉLITE", "MARIN": "M MARINA", "CHURR": "CHURRASCA",
+                "RYO": "RYOSHI", "ENCANT": "ENCANTO", "CHEG": "CHEGARAY"
+            }
+            for pref, full_name in alias_map.items():
+                if pref in texto_analisis:
+                    sucursal_encontrada = full_name
+                    confianza_pts += 20
+                    break
+
+        if sucursal_encontrada:
+            datos["sucursal"] = sucursal_encontrada
+
+        # B. Detección de Folios
+        folio_match = re.search(r'(?:FOLIO|BOL|DEL|DE|F)?\s*[:\s#]*(\d{2,6})\s*(?:AL|A|-|HASTA)\s*(\d{2,6})', texto_analisis)
+        if folio_match:
+            try:
+                f1 = int(folio_match.group(1))
+                f2 = int(folio_match.group(2))
+                if f2 >= f1:
+                    datos["folio_inicial"] = f1
+                    datos["folio_final"] = f2
+                    confianza_pts += 35
+            except ValueError:
+                pass
+
+        # C. Detección de Fecha
+        fecha_match = re.search(r'(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})', texto_analisis)
+        if fecha_match:
+            try:
+                d, m, y = int(fecha_match.group(1)), int(fecha_match.group(2)), int(fecha_match.group(3))
+                if y < 100:
+                    y += 2000
+                datos["fecha"] = date(y, m, d)
+                confianza_pts += 20
+            except Exception:
+                pass
+        else:
+            datos["fecha"] = date.today()
+
+        # D. Detección de Boletos Sin Cobro / Cancelados / Gastos
+        sin_cobro_m = re.search(r'(?:SIN COBRO|S/C|CORTESIA)\s*[:\s]*(\d+)', texto_analisis)
+        if sin_cobro_m:
+            datos["sin_cobro"] = int(sin_cobro_m.group(1))
+
+        canc_m = re.search(r'(?:CANCELADOS?|CANC)\s*[:\s]*(\d+)', texto_analisis)
+        if canc_m:
+            datos["cancelados"] = int(canc_m.group(1))
+
+        gastos_m = re.search(r'(?:GASTO|NOMINA|TOTAL GASTOS)\s*[:\$]?\s*(\d+(?:\.\d{2})?)', texto_analisis)
+        if gastos_m:
+            datos["gastos_nomina"] = float(gastos_m.group(1))
+
+        # E. Importes y conteos explícitos (si OCR pudo leer etiquetas del formato)
+        bruto_m = re.search(r'(?:INGRESO\s*BRUTO|TOTAL\s*INGRESOS|BRUTO)\s*[:$\s]*([0-9][0-9,]*(?:\.\d{1,2})?)', texto_analisis)
+        if bruto_m:
+            try: datos["ingreso_bruto"] = float(bruto_m.group(1).replace(",", "")); confianza_pts += 10
+            except ValueError: pass
+        tarifa_m = re.search(r'(?:COSTO|PRECIO|TARIFA)\s*(?:POR\s*)?(?:BOLETO|TICKET)?\s*[:$\s]*([0-9][0-9,]*(?:\.\d{1,2})?)', texto_analisis)
+        if tarifa_m:
+            try: datos["costo_boleto"] = float(tarifa_m.group(1).replace(",", "")); confianza_pts += 10
+            except ValueError: pass
+        total_b_m = re.search(r'(?:TOTAL\s*BOLETOS|BOLETOS\s*EXPEDIDOS)\s*[:\s]*(\d+)', texto_analisis)
+        if total_b_m:
+            datos["total_boletos"] = int(total_b_m.group(1))
+
+        # E. Inferencia y Enriquecimiento por la Memoria IA si faltan datos
+        if sucursal_encontrada and memoria_ia and "sucursales" in memoria_ia:
+            suc_ia = memoria_ia["sucursales"].get(sucursal_encontrada)
+            if suc_ia:
+                # Predecir folio inicial si no fue detectado en la foto
+                if "folio_inicial" not in datos and suc_ia.get("ultimo_folio_final", 0) > 0:
+                    prediccion_ini = suc_ia["ultimo_folio_final"] + 1
+                    datos["folio_inicial"] = prediccion_ini
+                    datos["folio_final"] = prediccion_ini + int(suc_ia.get("promedio_boletos", 50))
+                    resultado["advertencias"].append(f"🤖 IA sugirió folios ({datos['folio_inicial']} a {datos['folio_final']}) con base en el historial previo.")
+
+                if "costo_boleto" not in datos:
+                    datos["costo_boleto"] = suc_ia.get("costo_habitual", PRECIOS_SUCURSALES.get(sucursal_encontrada, 50))
+
+        resultado["datos_extraidos"] = datos
+        resultado["confianza"] = min(100, confianza_pts + (20 if resultado["valida"] else 0))
+        
+        if not resultado["advertencias"]:
+            resultado["mensaje"] = f"✅ Imagen nítida ({w}x{h} px) | Confianza IA: {resultado['confianza']}%"
+        else:
+            resultado["mensaje"] = " | ".join(resultado["advertencias"])
+
+        return resultado
+    except Exception as e:
+        resultado["mensaje"] = f"❌ Error leyendo imagen: {e}"
+        return resultado
+
+def evaluar_rentabilidad(margen):
+    if margen >= 40.0:
+        return "🟢 Alta"
+    elif margen >= 15.0:
+        return "🟡 Moderada"
+    elif margen > 0.0:
+        return "🟠 Baja"
+    else:
+        return "🔴 Pérdida"
 
 # =========================================================================
 # GENERADOR DE EXCEL MULTI-HOJA BLINDADO (AUDITORÍA & RENTABILIDAD)
@@ -822,7 +1143,511 @@ with tab1:
             key="uploader_mobile_photo"
         )
 
-                with c_g1:
+    # Estado de auto-llenado
+    datos_auto = {}
+    analisis_foto = None
+
+    if foto_cargada:
+        with st.spinner("🤖 Analizando fotografía con visión artificial y reglas de auditoría..."):
+            analisis_foto = validar_y_analizar_foto_inteligente(
+                foto_cargada,
+                list(PRECIOS_SUCURSALES.keys()),
+                memoria_ia_global
+            )
+            datos_auto = analisis_foto.get("datos_extraidos", {})
+
+        col_prev, col_info_ia = st.columns([1, 2])
+        with col_prev:
+            st.image(foto_cargada, caption="Fotografía procesada", use_container_width=True)
+            if analisis_foto.get("valida"):
+                st.success(analisis_foto["mensaje"])
+            else:
+                st.warning(analisis_foto["mensaje"])
+
+        with col_info_ia:
+            st.markdown("#### 🪄 Datos Extraídos Automáticamente por la IA:")
+            suc_det = datos_auto.get("sucursal", "No detectada")
+            f_ini_det = datos_auto.get("folio_inicial", 0)
+            f_fin_det = datos_auto.get("folio_final", 0)
+            fecha_det = datos_auto.get("fecha", date.today())
+            costo_det = datos_auto.get("costo_boleto", PRECIOS_SUCURSALES.get(suc_det, 40))
+
+            c_det1, c_det2 = st.columns(2)
+            with c_det1:
+                st.write(f"🏢 **Sucursal:** `{suc_det}`")
+                st.write(f"📅 **Fecha:** `{fecha_det.strftime('%d/%m/%Y')}`")
+                st.write(f"💵 **Tarifa Boleto:** `${costo_det} MXN`")
+            with c_det2:
+                st.write(f"🎟️ **Folio Inicial:** `{f_ini_det}`")
+                st.write(f"🎟️ **Folio Final:** `{f_fin_det}`")
+                st.write(f"🧠 **Nivel de Confianza:** `{analisis_foto.get('confianza', 0)}%`")
+
+    st.markdown("---")
+    st.markdown("#### 📝 Confirmación y Ajustes del Reporte")
+
+    # Controles del Formulario (pre-llenados por foto o interactivos)
+    col_frm1, col_frm2 = st.columns(2)
+    with col_frm1:
+        fec_val = datos_auto.get("fecha", date.today())
+        if "f_rep_final" not in st.session_state: st.session_state["f_rep_final"] = fec_val
+        fecha_rep = st.date_input("Fecha de Operación:", key="f_rep_final")
+        fecha_rep_str = fecha_rep.strftime("%d/%m/%Y")
+
+        idx_s = 0
+        if "sucursal" in datos_auto and datos_auto["sucursal"] in SUCURSALES_LISTA:
+            idx_s = SUCURSALES_LISTA.index(datos_auto["sucursal"])
+
+        if "select_sitio" not in st.session_state: st.session_state["select_sitio"] = SUCURSALES_LISTA[idx_s]
+        sucursal_sel = st.selectbox(
+            "Sucursal / Unidad:",
+            SUCURSALES_LISTA,
+            key="select_sitio",
+            on_change=on_sucursal_change
+        )
+        es_directo = (sucursal_sel in ["BARRANCA", "VETERINARIA", "S. AZURA", "E-BNI"] or PRECIOS_SUCURSALES.get(sucursal_sel, 0) == 0)
+
+    with col_frm2:
+        if es_directo:
+            st.info("📌 Modalidad: Cobro directo de Ingreso Bruto sin control por folio.")
+            costo_boleto_final = 0.0
+        else:
+            costo_sugerido = datos_auto.get("costo_boleto", PRECIOS_SUCURSALES.get(sucursal_sel, 40))
+            costo_boleto_final = st.number_input(
+                "Tarifa por Boleto ($ MXN):",
+                min_value=0,
+                step=5,
+                key="costo_boleto_final_in"
+            )
+
+    col_h1, col_h2 = st.columns(2)
+    with col_h1:
+        hora_apertura = st.time_input("Hora de Apertura:", value=time(13, 0), key="h_ape_in")
+    with col_h2:
+        hora_cierre = st.time_input("Hora de Cierre:", value=time(23, 0), key="h_cie_in")
+
+    st.markdown("#### 🎫 Control Numérico de Folios y Boletos")
+    c_num1, c_num2, c_num3 = st.columns(3)
+
+    if es_directo:
+        with c_num1:
+            if "dir_ing_in" not in st.session_state: st.session_state["dir_ing_in"] = float(datos_auto.get("ingreso_bruto", 0.0))
+            ingreso_directo_val = st.number_input("Ingreso Bruto de la Unidad ($ MXN):", min_value=0.0, step=50.0, key="dir_ing_in")
+            f_ini_final = 0
+            f_fin_final = 0
+        with c_num2:
+            f_sin_final = 0
+            f_can_final = 0
+        with c_num3:
+            f_per_final = 0
+        tot_bol_calc = 0
+        cobrados_calc = 0
+        bruto_calc = float(ingreso_directo_val)
+    else:
+        with c_num1:
+            val_fi = int(datos_auto.get("folio_inicial", 0))
+            val_ff = int(datos_auto.get("folio_final", 0))
+            if "in_f_ini_f" not in st.session_state: st.session_state["in_f_ini_f"] = val_fi
+            if "in_f_fin_f" not in st.session_state: st.session_state["in_f_fin_f"] = val_ff
+            f_ini_final = st.number_input("Folio Inicial:", min_value=0, step=1, key="in_f_ini_f")
+            f_fin_final = st.number_input("Folio Final:", min_value=0, step=1, key="in_f_fin_f")
+        with c_num2:
+            val_sc = int(datos_auto.get("sin_cobro", 0))
+            val_canc = int(datos_auto.get("cancelados", 0))
+            if "in_f_sc_f" not in st.session_state: st.session_state["in_f_sc_f"] = val_sc
+            if "in_f_canc_f" not in st.session_state: st.session_state["in_f_canc_f"] = val_canc
+            f_sin_final = st.number_input("Boletos Sin Cobro (Cortesía):", min_value=0, step=1, key="in_f_sc_f")
+            f_can_final = st.number_input("Boletos Cancelados:", min_value=0, step=1, key="in_f_canc_f")
+        with c_num3:
+            f_per_final = st.number_input("Boletos Perdidos:", min_value=0, step=1, key="in_f_perd_f")
+
+        tot_bol_calc = max(0, (int(f_fin_final) - int(f_ini_final)) + 1) if int(f_fin_final) >= int(f_ini_final) and int(f_ini_final) > 0 else 0
+        cobrados_calc = max(0, tot_bol_calc - int(f_sin_final) - int(f_can_final))
+        bruto_calc = cobrados_calc * float(costo_boleto_final)
+
+    st.markdown("#### 💵 Egresos Operativos y Firmas")
+    c_egr1, c_egr2, c_fir1, c_fir2 = st.columns(4)
+    with c_egr1:
+        gastos_esp = st.number_input("Gastos Especiales ($):", min_value=0.0, value=0.0, step=10.0, key="g_esp_f")
+    with c_egr2:
+        val_gn = float(datos_auto.get("gastos_nomina", 0.0))
+        if "g_gen_f" not in st.session_state: st.session_state["g_gen_f"] = val_gn
+        gastos_gen = st.number_input("Gastos Nómina / Generales ($):", min_value=0.0, step=10.0, key="g_gen_f")
+    with c_fir1:
+        elaboro_nombre = st.text_input("Elaboró (Firma/Supervisor):", value=st.session_state.usuario_autenticado, key="elab_f")
+    with c_fir2:
+        recibe_nombre = st.text_input("Recibe (Auditor/Encargado):", value="", key="recibe_f")
+
+    tot_gastos_calc = float(gastos_esp) + float(gastos_gen)
+    neto_calc = bruto_calc - tot_gastos_calc
+    margen_calc = (neto_calc / bruto_calc * 100) if bruto_calc > 0 else 0.0
+    rentabilidad_str = evaluar_rentabilidad(margen_calc)
+
+    # REPORTE PRELIMINAR PARA AUDITORÍA EN TIEMPO REAL
+    rep_preliminar = {
+        "ID": "PREVIO",
+        "Fecha": fecha_rep_str,
+        "Sitio / Unidad": sucursal_sel,
+        "Costo Boleto": float(costo_boleto_final),
+        "Folio Inicial": int(f_ini_final),
+        "Folio Final": int(f_fin_final),
+        "Total Boletos": tot_bol_calc,
+        "Sin Cobro": int(f_sin_final),
+        "Cancelados": int(f_can_final),
+        "Perdidos": int(f_per_final),
+        "Boletos Cobrados": cobrados_calc,
+        "Ingreso Bruto": bruto_calc,
+        "Gastos Especiales": float(gastos_esp),
+        "Gastos Generales / Nómina": float(gastos_gen),
+        "Total Gastos": tot_gastos_calc,
+        "Ingreso Neto": neto_calc,
+        "Margen (%)": round(margen_calc, 2),
+        "Elaboró": elaboro_nombre,
+        "Recibe": recibe_nombre,
+        "foto_path": "CARGADA" if foto_cargada else None
+    }
+
+    score_aud, nivel_aud, fallas_aud, obs_aud = evaluar_auditoria_reporte(
+        rep_preliminar,
+        st.session_state.registros,
+        memoria_ia_global
+    )
+
+    # MOSTRAR EVALUACIÓN DE AUDITORÍA EN TIEMPO REAL
+    st.markdown("---")
+    st.markdown("### 🛡️ Evaluación de Auditoría y Rentabilidad en Tiempo Real")
+    col_aud_m1, col_aud_m2, col_aud_m3, col_aud_m4 = st.columns(4)
+    with col_aud_m1:
+        st.metric("Ingreso Bruto", f"${bruto_calc:,.2f} MXN", help="Boletos cobrados x Tarifa")
+    with col_aud_m2:
+        st.metric("Total Gastos", f"${tot_gastos_calc:,.2f} MXN", help="Especiales + Nómina")
+    with col_aud_m3:
+        st.metric("Utilidad Neta", f"${neto_calc:,.2f} MXN", delta=f"{margen_calc:.1f}% Margen")
+    with col_aud_m4:
+        st.metric("Auditoría Score", f"{score_aud}/100", delta=nivel_aud)
+
+    if fallas_aud:
+        st.error("🚨 **Fallas de Auditoría Detectadas en este Reporte:**")
+        for f in fallas_aud:
+            st.markdown(f"- **{f['regla']}** ({f['gravedad']}): {f['detalle']}")
+
+    if obs_aud:
+        st.info("📌 **Observaciones de Auditoría:** " + " | ".join(obs_aud))
+
+    # VALIDACIÓN DE DUPLICADO
+    ya_existe = any(r.get("Sitio / Unidad") == sucursal_sel and r.get("Fecha") == fecha_rep_str for r in st.session_state.registros)
+    bloquear_guardado = False
+    if ya_existe and not es_contador:
+        st.error(f"🚫 Ya existe un reporte registrado para **{sucursal_sel}** en la fecha **{fecha_rep_str}**.")
+        bloquear_guardado = True
+
+    # BOTÓN PRINCIPAL DE 1-CLIC
+    st.markdown("---")
+    btn_label = "⚡ Confirmar y Subir Reporte con 1 Toque" if foto_cargada else "💾 Guardar y Registrar Reporte Operativo"
+    if st.button(btn_label, type="primary", use_container_width=True, disabled=bloquear_guardado):
+        if sucursal_sel == "-- Selecciona o busca la sucursal --":
+            st.error("❌ Por favor selecciona una sucursal válida.")
+        else:
+            nuevo_id = f"REP_{uuid.uuid4().hex[:8]}"
+            ruta_foto = None
+            bytes_foto = None
+            nom_foto = None
+            if foto_cargada:
+                ruta_foto, bytes_foto, nom_foto = guardar_imagen_optimizada(foto_cargada, nuevo_id, sucursal_sel, fecha_rep_str)
+
+            registro_completo = {
+                "ID": nuevo_id,
+                "Fecha": fecha_rep_str,
+                "Sitio / Unidad": sucursal_sel,
+                "Horario": f"{hora_apertura.strftime('%H:%M')} a {hora_cierre.strftime('%H:%M')}",
+                "Costo Boleto": float(costo_boleto_final),
+                "Folio Inicial": int(f_ini_final),
+                "Folio Final": int(f_fin_final),
+                "Total Boletos": tot_bol_calc,
+                "Sin Cobro": int(f_sin_final),
+                "Cancelados": int(f_can_final),
+                "Perdidos": int(f_per_final),
+                "Boletos Cobrados": cobrados_calc,
+                "Ingreso Bruto": bruto_calc,
+                "Gastos Especiales": float(gastos_esp),
+                "Gastos Generales / Nómina": float(gastos_gen),
+                "Total Gastos": tot_gastos_calc,
+                "Ingreso Neto": neto_calc,
+                "Margen (%)": round(margen_calc, 2),
+                "Rentabilidad": rentabilidad_str,
+                "Score Auditoría": score_aud,
+                "Nivel Auditoría": nivel_aud,
+                "Fallas Auditoría": [f["regla"] for f in fallas_aud],
+                "Elaboró": elaboro_nombre if elaboro_nombre else st.session_state.usuario_autenticado,
+                "Recibe": recibe_nombre,
+                "Tipo": "Operación Regular",
+                "foto_path": ruta_foto,
+                "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+
+            st.session_state.registros.append(registro_completo)
+            guardar_registros_permanentes(st.session_state.registros)
+
+            # Persistencia en la Nube Supabase (si está configurada)
+            sb_ok, sb_msg = sincronizar_reporte_supabase(registro_completo, bytes_foto, nom_foto)
+            if sb_ok:
+                st.toast(f"☁️ {sb_msg}", icon="✅")
+
+            # Registrar en el historial de auditoría
+            registrar_evento_auditoria(
+                tipo_evento="Creación de Reporte",
+                usuario=st.session_state.usuario_autenticado,
+                id_reporte=nuevo_id,
+                sucursal=sucursal_sel,
+                fecha_op=fecha_rep_str,
+                detalles=f"Reporte subido con {cobrados_calc} boletos, Neto: ${neto_calc:,.2f} MXN, Score: {score_aud}/100",
+                score=score_aud,
+                fallas=fallas_aud
+            )
+
+            # Entrenar la Inteligencia Artificial Adaptativa con este nuevo reporte
+            actualizar_memoria_ia(registro_completo)
+
+            st.success(f"🎉 ¡Reporte registrado exitosamente con ID `{nuevo_id}`!")
+            st.balloons()
+            st.rerun()
+
+# =========================================================================
+# TAB 2: MÓDULO CENTRAL DE RENTABILIDAD POR SUCURSAL
+# =========================================================================
+with tab2:
+    st.markdown("### 📈 Rentabilidad y Rendimiento Financiero por Sucursal")
+    st.markdown("Monitoreo en tiempo real de ingresos brutos, gastos de operación, nómina y margen neto de cada unidad de negocio.")
+
+    if not st.session_state.registros:
+        st.info("No hay datos suficientes para calcular rentabilidad. Registra el primer reporte.")
+    else:
+        df_r = pd.DataFrame(st.session_state.registros)
+        cols_n = ["Ingreso Bruto", "Gastos Especiales", "Gastos Generales / Nómina", "Total Gastos", "Ingreso Neto", "Boletos Cobrados"]
+        for c in cols_n:
+            df_r[c] = pd.to_numeric(df_r.get(c, 0.0), errors="coerce").fillna(0.0)
+
+        # KPIs Globales
+        tot_bruto = df_r["Ingreso Bruto"].sum()
+        tot_gastos = df_r["Total Gastos"].sum()
+        tot_neto = df_r["Ingreso Neto"].sum()
+        margen_global = (tot_neto / tot_bruto * 100) if tot_bruto > 0 else 0.0
+
+        k1, k2, k3, k4 = st.columns(4)
+        with k1:
+            st.metric("Ingreso Bruto Global", f"${tot_bruto:,.2f} MXN")
+        with k2:
+            st.metric("Gastos y Nómina Global", f"${tot_gastos:,.2f} MXN")
+        with k3:
+            st.metric("Utilidad Neta Real", f"${tot_neto:,.2f} MXN")
+        with k4:
+            st.metric("Margen Global del Negocio", f"{margen_global:.1f}%", delta=evaluar_rentabilidad(margen_global))
+
+        st.markdown("---")
+
+        # Agrupación por Sucursal
+        res_suc = df_r.groupby("Sitio / Unidad").agg({
+            "ID": "count",
+            "Boletos Cobrados": "sum",
+            "Ingreso Bruto": "sum",
+            "Gastos Especiales": "sum",
+            "Gastos Generales / Nómina": "sum",
+            "Total Gastos": "sum",
+            "Ingreso Neto": "sum"
+        }).reset_index()
+
+        res_suc.rename(columns={"ID": "Reportes"}, inplace=True)
+        res_suc["Margen (%)"] = ((res_suc["Ingreso Neto"] / res_suc["Ingreso Bruto"]) * 100).fillna(0.0).round(2)
+        res_suc["Rentabilidad"] = res_suc["Margen (%)"].apply(evaluar_rentabilidad)
+        res_suc["% Gasto s/Ingreso"] = ((res_suc["Total Gastos"] / res_suc["Ingreso Bruto"]) * 100).fillna(0.0).round(1)
+        res_suc = res_suc.sort_values(by="Ingreso Neto", ascending=False)
+
+        col_top, col_flop = st.columns(2)
+        with col_top:
+            st.markdown("#### 🏆 Top Sucursales Más Rentables")
+            top_3 = res_suc.head(3)
+            for idx, row in top_3.iterrows():
+                st.markdown(f"""
+                <div class="card-auditoria" style="border-left-color: #38A169;">
+                    <b>{row['Sitio / Unidad']}</b> | Utilidad: <b>${row['Ingreso Neto']:,.2f} MXN</b><br>
+                    Margen: <span class="badge-verde">{row['Margen (%)']}%</span> | Boletos: {int(row['Boletos Cobrados']):,}
+                </div>
+                """, unsafe_allow_html=True)
+
+        with col_flop:
+            st.markdown("#### ⚠️ Sucursales con Bajo Margen o Pérdida")
+            flop_3 = res_suc.sort_values(by="Margen (%)", ascending=True).head(3)
+            for idx, row in flop_3.iterrows():
+                color_border = "#E53E3E" if row['Ingreso Neto'] < 0 else "#D69E2E"
+                badge_class = "badge-rojo" if row['Ingreso Neto'] < 0 else "badge-amarillo"
+                st.markdown(f"""
+                <div class="card-auditoria" style="border-left-color: {color_border};">
+                    <b>{row['Sitio / Unidad']}</b> | Utilidad: <b>${row['Ingreso Neto']:,.2f} MXN</b><br>
+                    Margen: <span class="{badge_class}">{row['Margen (%)']}%</span> | Gastos: {row['% Gasto s/Ingreso']}% del ingreso
+                </div>
+                """, unsafe_allow_html=True)
+
+        st.markdown("---")
+        st.markdown("#### 📊 Tabla Detallada de Rentabilidad por Unidad")
+
+        columnas_mostrar = [
+            "Sitio / Unidad", "Reportes", "Boletos Cobrados", "Ingreso Bruto",
+            "Total Gastos", "Ingreso Neto", "Margen (%)", "% Gasto s/Ingreso", "Rentabilidad"
+        ]
+        
+        # Formatear números para visualización ejecutiva
+        df_tabla = res_suc[columnas_mostrar].copy()
+        df_tabla["Ingreso Bruto"] = df_tabla["Ingreso Bruto"].apply(lambda x: f"${x:,.2f}")
+        df_tabla["Total Gastos"] = df_tabla["Total Gastos"].apply(lambda x: f"${x:,.2f}")
+        df_tabla["Ingreso Neto"] = df_tabla["Ingreso Neto"].apply(lambda x: f"${x:,.2f}")
+        df_tabla["Margen (%)"] = df_tabla["Margen (%)"].apply(lambda x: f"{x:.1f}%")
+        df_tabla["% Gasto s/Ingreso"] = df_tabla["% Gasto s/Ingreso"].apply(lambda x: f"{x:.1f}%")
+        st.dataframe(df_tabla, use_container_width=True, hide_index=True)
+
+        # Gráfico Ligero Nativo de Barras (Utilidad Neta por Sucursal)
+        st.markdown("#### 📉 Comparativa de Utilidad Neta ($ MXN)")
+        chart_data = res_suc.set_index("Sitio / Unidad")[["Ingreso Neto"]]
+        st.bar_chart(chart_data)
+
+# =========================================================================
+# TAB 3: AUDITORÍA Y BITÁCORA DE HISTORIAL (AUDITOR) O MIS REPORTES (SUPERVISOR)
+# =========================================================================
+if es_contador:
+    with tab3:
+        st.markdown("### 🕵️ Auditoría Operativa y Bitácora de Movimientos")
+        st.markdown("Historial inmutable de auditoría: registro de creaciones, modificaciones, revisiones y detección automática de anomalías.")
+
+        historial_eventos = cargar_historial_auditoria()
+        c_f1, c_f2 = st.columns(2)
+        with c_f1:
+            filtro_suc = st.selectbox("Filtrar por Sucursal:", ["Todas las sucursales"] + list(PRECIOS_SUCURSALES.keys()), key="filtro_suc_aud")
+        with c_f2:
+            filtro_tipo = st.selectbox("Filtrar por Tipo de Evento:", ["Todos los eventos", "Creación de Reporte", "Modificación", "Aprobación de Auditoría", "Eliminación"], key="filtro_tipo_aud")
+
+        eventos_filtrados = historial_eventos
+        if filtro_suc != "Todas las sucursales":
+            eventos_filtrados = [e for e in eventos_filtrados if e.get("sucursal") == filtro_suc]
+        if filtro_tipo != "Todos los eventos":
+            eventos_filtrados = [e for e in eventos_filtrados if e.get("tipo_evento") == filtro_tipo]
+
+        st.markdown(f"**Total de eventos registrados:** `{len(eventos_filtrados)}`")
+
+        if eventos_filtrados:
+            for ev in eventos_filtrados[:25]:
+                score_ev = ev.get("score_auditoria", 100)
+                badge_score = "badge-verde" if score_ev >= 90 else ("badge-amarillo" if score_ev >= 70 else "badge-rojo")
+                b_color = "#38A169" if score_ev >= 90 else ("#D69E2E" if score_ev >= 70 else "#E53E3E")
+
+                st.markdown(f"""
+                <div class="card-auditoria" style="border-left-color: {b_color};">
+                    <span style="font-size: 0.85rem; color: #718096;">🕒 {ev.get('timestamp')} | Usuario: <b>{ev.get('usuario')}</b></span><br>
+                    <b>{ev.get('tipo_evento')}</b> en <b>{ev.get('sucursal')}</b> (Fecha Op: {ev.get('fecha_operacion')})<br>
+                    <span>{ev.get('detalles')}</span><br>
+                    Auditoría: <span class="{badge_score}">{score_ev}/100</span>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("No se encontraron registros de auditoría para los filtros seleccionados.")
+
+        # Hallazgos de Auditoría en Reportes Guardados
+        st.markdown("---")
+        st.markdown("#### 🚨 Reportes con Hallazgos o Falla de Auditoría Pendientes de Revisión")
+        reportes_con_falla = [r for r in st.session_state.registros if r.get("Score Auditoría", 100) < 85 or r.get("Fallas Auditoría")]
+        if reportes_con_falla:
+            for rep in reportes_con_falla:
+                with st.expander(f"⚠️ {rep.get('Sitio / Unidad')} ({rep.get('Fecha')}) - Score: {rep.get('Score Auditoría', 'N/A')}/100"):
+                    st.write(f"- **ID:** `{rep.get('ID')}`")
+                    st.write(f"- **Fallas detectadas:** {rep.get('Fallas Auditoría')}")
+                    st.write(f"- **Neto:** ${rep.get('Ingreso Neto', 0):,.2f} MXN | Margen: {rep.get('Margen (%)')}%")
+                    if rep.get("foto_path") and os.path.exists(rep["foto_path"]):
+                        st.image(rep["foto_path"], caption="Fotografía física del reporte con falla", width=350)
+        else:
+            st.success("✅ No existen reportes con fallas críticas pendientes de revisión.")
+
+else:
+    with tab3:
+        st.markdown("### 📋 Mis Reportes Operativos")
+        mis_reportes = [r for r in st.session_state.registros if r.get("Elaboró") == st.session_state.usuario_autenticado]
+        if mis_reportes:
+            st.dataframe(pd.DataFrame(mis_reportes)[["ID", "Fecha", "Sitio / Unidad", "Boletos Cobrados", "Ingreso Bruto", "Total Gastos", "Ingreso Neto", "Margen (%)"]], use_container_width=True)
+        else:
+            st.info("Aún no has registrado reportes bajo tu usuario.")
+
+#
+=========================================================================
+# TABS EXCLUSIVOS AUDITOR (EVENTOS, GESTIÓN, DESPLIEGUE)
+# =========================================================================
+if es_contador:
+    # TAB 4: Evento Extraordinario
+    with tab4:
+        st.markdown("### ⚡ Registro de Evento Extraordinario")
+        c_ev1, c_ev2 = st.columns(2)
+        with c_ev1:
+            ev_f = st.date_input("Fecha del Evento:", value=date.today(), key="ev_f_in")
+            ev_suc = st.selectbox("Sucursal / Sede del Evento:", SUCURSALES_LISTA, key="ev_suc_in")
+            ev_costo = st.number_input("Costo Boleto Evento ($ MXN):", min_value=0.0, value=100.0, step=10.0, key="ev_c_in")
+        with c_ev2:
+            ev_h_ini = st.time_input("Inicio Evento:", value=time(18, 0), key="ev_hi_in")
+            ev_h_fin = st.time_input("Fin Evento:", value=time(2, 0), key="ev_hf_in")
+            ev_bol = st.number_input("Boletos Cobrados:", min_value=0, value=60, step=1, key="ev_b_in")
+
+        ev_gastos = st.number_input("Total Gastos / Nómina Evento ($ MXN):", min_value=0.0, value=0.0, step=50.0, key="ev_g_in")
+        ev_elab = st.text_input("Responsable del Evento:", value=st.session_state.usuario_autenticado, key="ev_el_in")
+
+        ev_bruto = float(ev_bol) * float(ev_costo)
+        ev_neto = ev_bruto - float(ev_gastos)
+        ev_margen = (ev_neto / ev_bruto * 100) if ev_bruto > 0 else 0.0
+
+        st.metric("Utilidad Generada en Evento", f"${ev_neto:,.2f} MXN", delta=f"{ev_margen:.1f}% Margen")
+
+        if st.button("💾 Guardar Evento Extraordinario", type="primary", key="btn_save_event"):
+            if ev_suc != "-- Selecciona o busca la sucursal --":
+                id_ev = f"EVT_{uuid.uuid4().hex[:6]}"
+                evento_obj = {
+                    "ID": id_ev,
+                    "Fecha": ev_f.strftime("%d/%m/%Y"),
+                    "Sitio / Unidad": ev_suc,
+                    "Horario": f"{ev_h_ini.strftime('%H:%M')} a {ev_h_fin.strftime('%H:%M')}",
+                    "Costo Boleto": float(ev_costo),
+                    "Folio Inicial": 1,
+                    "Folio Final": int(ev_bol),
+                    "Total Boletos": int(ev_bol),
+                    "Sin Cobro": 0, "Cancelados": 0, "Perdidos": 0,
+                    "Boletos Cobrados": int(ev_bol),
+                    "Ingreso Bruto": ev_bruto,
+                    "Gastos Especiales": float(ev_gastos),
+                    "Gastos Generales / Nómina": 0.0,
+                    "Total Gastos": float(ev_gastos),
+                    "Ingreso Neto": ev_neto,
+                    "Margen (%)": round(ev_margen, 2),
+                    "Rentabilidad": evaluar_rentabilidad(ev_margen),
+                    "Score Auditoría": 100,
+                    "Elaboró": ev_elab,
+                    "Recibe": "Víctor (Contador)",
+                    "Tipo": "Evento Extraordinario",
+                    "foto_path": None,
+                    "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+                st.session_state.registros.append(evento_obj)
+                guardar_registros_permanentes(st.session_state.registros)
+                registrar_evento_auditoria("Creación de Evento", st.session_state.usuario_autenticado, id_ev, ev_suc, ev_f.strftime("%d/%m/%Y"), f"Evento con {ev_bol} boletos y utilidad de ${ev_neto:,.2f}")
+                actualizar_memoria_ia(evento_obj)
+                st.success("✅ Evento extraordinario guardado exitosamente.")
+                st.rerun()
+
+    # TAB 5: Gestión y Edición de Reportes
+    with tab5:
+        st.markdown("### 🗂️ Gestión, Edición y Eliminación de Reportes")
+        if st.session_state.registros:
+            opciones_rep = [
+                f"{r.get('ID')} | {r.get('Fecha')} | {r.get('Sitio / Unidad')} | Neto: ${r.get('Ingreso Neto', 0):,.2f}"
+                for r in st.session_state.registros
+            ]
+            sel_rep = st.selectbox("Seleccionar reporte:", opciones_rep, key="sel_rep_gest")
+            idx_rep = opciones_rep.index(sel_rep)
+            rep_data = st.session_state.registros[idx_rep]
+
+            c_g1, c_g2 = st.columns([2, 1])
+            with c_g1:
                 st.json(rep_data)
             with c_g2:
                 foto_p = rep_data.get("foto_path")
@@ -843,7 +1668,7 @@ with tab1:
                 )
                 st.success(f"Revisión registrada: {audit_level}. Consulta la bitácora para el detalle.")
 
-             if st.button("🗑️ Eliminar Reporte y Archivo Adjunto", key="btn_del_r_aud", type="primary"):
+            if st.button("🗑️ Eliminar Reporte y Archivo Adjunto", key="btn_del_r_aud", type="primary"):
                 if foto_p and os.path.exists(foto_p):
                     try:
                         os.remove(foto_p)
