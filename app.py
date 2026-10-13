@@ -1,3 +1,4 @@
+import urllib.parse
 # -*- coding: utf-8 -*-
 """
 CLUB PARK VALET Y ESTACIONAMIENTOS S.A. DE C.V.
@@ -187,6 +188,29 @@ def obtener_secreto(clave: str, valor_por_defecto: str) -> str:
         pass
     return valor_por_defecto
 
+def calcular_boletos_block100(f_ini: int, f_fin: int) -> int:
+    """
+    Calcula boletos vendidos cuando los blocks son de 100 boletos
+    y solo se cuentan los últimos 2 dígitos (módulo 100).
+    Ejemplo: folio inicial 595 y folio final 303 -> 9 boletos (95 al 03).
+    """
+    if f_ini <= 0 and f_fin <= 0:
+        return 0
+    d_ini = int(f_ini) % 100
+    d_fin = int(f_fin) % 100
+    if d_fin >= d_ini:
+        return (d_fin - d_ini) + 1
+    else:
+        return (100 - d_ini) + d_fin + 1
+
+def generar_enlace_whatsapp(telefono: str, mensaje: str) -> str:
+    """Genera URL wa.me para enviar mensajes y recordatorios directamente desde cualquier Android/PC."""
+    tel_clean = "".join(c for c in str(telefono) if c.isdigit())
+    if not tel_clean.startswith("52") and len(tel_clean) == 10:
+        tel_clean = "52" + tel_clean
+    msg_enc = urllib.parse.quote(mensaje)
+    return f"https://wa.me/{tel_clean}?text={msg_enc}"
+
 # =========================================================================
 # CATÁLOGO DE SUCURSALES Y PRECIOS BASE
 # =========================================================================
@@ -196,7 +220,7 @@ PRECIOS_SUCURSALES = {
     "J.DIVISION": 100, "J.PICACHO": 100, "J.EMPRESA": 100, "sipily": 80,
     "M SATÉLITE": 70, "M MARINA": 70, "VETERINARIA": 0, "CLÍNICA": 100,
     "SUMO STA": 50, "CHEGARAY": 50, "RYOSHI": 80, "ENCANTO": 90,
-    "S. AZURA": 0, "E-BNI": 0, "CHURRASCA": 70, "SUMO PICACHO": 50
+    "S. AZURA": 0, "E-BNI": 0, "CHURRASCA": 70
 }
 
 UNIDADES_JESUS = ["PAMPAS", "RAMMA", "SUSHITTO", "BARRANCA", "CARAJILLO", "BENINGANS", "CLÍNICA"]
@@ -412,15 +436,12 @@ def evaluar_auditoria_reporte(reporte_dict, registros_existentes=None, memoria_i
     recibe = str(reporte_dict.get("Recibe") or "").strip()
     es_directo = (suc in ["BARRANCA", "VETERINARIA", "S. AZURA", "E-BNI"] or PRECIOS_SUCURSALES.get(suc, 0) == 0)
 
-    # 1. Regla Matemática de Boletos
-    if not es_directo and f_fin > 0 and f_ini > 0:
-        calculado_tot = (f_fin - f_ini) + 1
-        if f_fin < f_ini:
-            score -= 30
-            fallas.append({"regla": "Folios Invertidos", "detalle": f"El Folio Final ({f_fin}) es menor al Folio Inicial ({f_ini}).", "gravedad": "CRÍTICA"})
-        elif calculado_tot != tot_bol:
+    # 1. Regla Matemática de Boletos (Blocks de 100, conteo por 2 últimos dígitos)
+    if not es_directo and (f_fin > 0 or f_ini > 0):
+        calculado_tot = calcular_boletos_block100(f_ini, f_fin)
+        if calculado_tot != tot_bol:
             score -= 20
-            fallas.append({"regla": "Matemática de Boletos", "detalle": f"Total calculado por folios ({calculado_tot}) no coincide con Total Boletos ({tot_bol}).", "gravedad": "ALTA"})
+            fallas.append({"regla": "Matemática de Boletos (Block 100)", "detalle": f"Total calculado por folios de 2 dígitos ({calculado_tot}) no coincide con Total Boletos ({tot_bol}).", "gravedad": "ALTA"})
         
         calc_cobrados = max(0, tot_bol - sin_cob - canc)
         if calc_cobrados != cobrados:
@@ -443,7 +464,7 @@ def evaluar_auditoria_reporte(reporte_dict, registros_existentes=None, memoria_i
         if tarifa_catalogo > 0 and costo_bol > 0 and abs(costo_bol - tarifa_catalogo) > 0.01:
             observaciones.append(f"📌 Tarifa capturada (${costo_bol:,.2f}) distinta a la tarifa de referencia del catálogo (${tarifa_catalogo:,.2f}); confirmar antes de aprobar.")
 
-    # 3. Regla de Cuadre Neto
+        # 3. Regla de Cuadre Neto
     neto_esperado = bruto - tot_gastos
     if abs(neto - neto_esperado) > 1.0:
         score -= 25
@@ -654,7 +675,7 @@ def validar_y_analizar_foto_inteligente(archivo_subido, catalogo_sucursales, mem
         # Búsqueda difusa para abreviaciones conocidas
         if not sucursal_encontrada:
             alias_map = {
-                "SUMO PICACHO": "SUMO PICACHO","CARAJ": "CARAJILLO", "SUSH": "SUSHITTO", "PAMPA ": "PAMPAS",
+                "CARAJ": "CARAJILLO", "SUSH": "SUSHITTO", "PAMPA": "PAMPAS",
                 "RAMA": "RAMMA", "BENI": "BENINGANS", "TLALP": "J.TLALPAN",
                 "DIVIS": "J.DIVISION", "PICACH": "J.PICACHO", "EMPRES": "J.EMPRESA",
                 "SATEL": "M SATÉLITE", "MARIN": "M MARINA", "CHURR": "CHURRASCA",
@@ -1102,20 +1123,45 @@ if es_contador:
 # =========================================================================
 # VISTAS PRINCIPALES POR PESTAÑAS
 # =========================================================================
+# --- ALARMA PROACTIVA DE EVENTOS EXTRAORDINARIOS (2 HORAS DE ANTICIPACIÓN) ---
+ahora = datetime.now()
+eventos_proximos = []
+for reg in st.session_state.registros:
+    if reg.get("Tipo") == "Evento Extraordinario":
+        try:
+            f_str = reg.get("Fecha", "")
+            h_str = reg.get("Horario", "").split(" a ")[0].strip()
+            dt_ev = datetime.strptime(f"{f_str} {h_str}", "%d/%m/%Y %H:%M")
+            dif_segundos = (dt_ev - ahora).total_seconds()
+            # Si el evento es en las próximas 2 horas (0 a 7200 segundos) o está en curso
+            if -3600 <= dif_segundos <= 7200:
+                eventos_proximos.append((reg, dt_ev, int(dif_segundos // 60)))
+        except Exception:
+            pass
+
+if eventos_proximos:
+    for ev_reg, dt_ev, mins in eventos_proximos:
+        if mins > 0:
+            st.error(f"🚨 **¡ALARMA DE EVENTO EXTRAORDINARIO EN 2 HORAS!** Sucursal: **{ev_reg.get('Sitio / Unidad')}** | Inicia a las **{dt_ev.strftime('%H:%M')}** (en aprox. {mins} minutos). Responsable: {ev_reg.get('Elaboró')}.")
+        else:
+            st.warning(f"⚡ **EVENTO EXTRAORDINARIO EN CURSO:** Sucursal: **{ev_reg.get('Sitio / Unidad')}** iniciada a las **{dt_ev.strftime('%H:%M')}**.")
+
 if es_contador:
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "📷 Subir con Foto (1-Clic)",
         "📈 Rentabilidad por Sucursal",
         "🕵️ Auditoría y Hallazgos",
         "⚡ Evento Extraordinario",
+        "📲 WhatsApp y Alarmas",
         "🗂️ Gestión de Reportes",
         "🧪 Pruebas de Despliegue"
     ])
 else:
-    tab1, tab2, tab3 = st.tabs([
+    tab1, tab2, tab3, tab4 = st.tabs([
         "📷 Subir con Foto (1-Clic)",
         "📈 Rentabilidad de Mis Sucursales",
-        "📋 Mis Reportes Operativos"
+        "📋 Mis Reportes Operativos",
+        "⚡ Eventos y Alertas"
     ])
 
 # =========================================================================
@@ -1633,8 +1679,66 @@ if es_contador:
                 st.success("✅ Evento extraordinario guardado exitosamente.")
                 st.rerun()
 
-    # TAB 5: Gestión y Edición de Reportes
+    # TAB 5: WhatsApp y Alarmas
     with tab5:
+        st.markdown("### 📲 Monitoreo de Reportes Faltantes y Notificaciones WhatsApp")
+        st.markdown("Calcula automáticamente los reportes pendientes por subir de cada supervisor según sus unidades asignadas y permite enviar recordatorios de 1 clic a sus teléfonos.")
+
+        # Conteo de reportes faltantes por supervisor para la fecha actual (o seleccionada)
+        col_w_fec, col_w_tel = st.columns(2)
+        with col_w_fec:
+            fec_monitoreo = st.date_input("Fecha a auditar entregas:", value=date.today(), key="fec_mon_w")
+            fec_mon_str = fec_monitoreo.strftime("%d/%m/%Y")
+        with col_w_tel:
+            st.caption("Configuración de teléfonos móviles para envío directo de WhatsApp:")
+            tel_jesus = st.text_input("Teléfono José de Jesús (WhatsApp):", value="525500000000", key="tel_jes_in")
+            tel_victor = st.text_input("Teléfono Víctor Manuel (WhatsApp):", value="525500000001", key="tel_vic_in")
+
+        # Reportes existentes en esa fecha
+        reps_fecha = [r for r in st.session_state.registros if r.get("Fecha") == fec_mon_str]
+        unidades_reportadas = set(r.get("Sitio / Unidad") for r in reps_fecha)
+
+        faltantes_jesus = [u for u in UNIDADES_JESUS if u not in unidades_reportadas]
+        faltantes_victor = [u for u in UNIDADES_VICTOR if u not in unidades_reportadas]
+
+        c_w1, c_w2 = st.columns(2)
+        with c_w1:
+            st.markdown(f"#### 👤 José de Jesús ({len(faltantes_jesus)} pendientes)")
+            if faltantes_jesus:
+                st.warning(f"Unidades pendientes de subir: {', '.join(faltantes_jesus)}")
+                msg_j = f"Hola Jesús, te recordamos que para la fecha {fec_mon_str} tienes {len(faltantes_jesus)} reporte(s) pendiente(s) por subir a CLUB PARK: {', '.join(faltantes_jesus)}. Favor de cargarlos a la brevedad."
+                url_w_j = generar_enlace_whatsapp(tel_jesus, msg_j)
+                st.link_button("📲 Enviar Recordatorio WhatsApp a Jesús", url_w_j, use_container_width=True)
+            else:
+                st.success("✅ Jesús tiene todas sus unidades cubiertas al 100%.")
+
+        with c_w2:
+            st.markdown(f"#### 👤 Víctor Manuel ({len(faltantes_victor)} pendientes)")
+            if faltantes_victor:
+                st.warning(f"Unidades pendientes de subir: {', '.join(faltantes_victor)}")
+                msg_v = f"Hola Víctor, te recordamos que para la fecha {fec_mon_str} tienes {len(faltantes_victor)} reporte(s) pendiente(s) por subir a CLUB PARK: {', '.join(faltantes_victor)}. Favor de cargarlos a la brevedad."
+                url_w_v = generar_enlace_whatsapp(tel_victor, msg_v)
+                st.link_button("📲 Enviar Recordatorio WhatsApp a Víctor", url_w_v, use_container_width=True)
+            else:
+                st.success("✅ Víctor tiene todas sus unidades cubiertas al 100%.")
+
+        st.markdown("---")
+        st.markdown("#### ⏰ Notificación de Eventos Extraordinarios a Supervisores")
+        evs_futuros = [r for r in st.session_state.registros if r.get("Tipo") == "Evento Extraordinario"]
+        if evs_futuros:
+            for ev in evs_futuros[-5:]:
+                st.write(f"⚡ **{ev.get('Sitio / Unidad')}** | Fecha: `{ev.get('Fecha')}` | Horario: `{ev.get('Horario')}` | Responsable: `{ev.get('Elaboró')}`")
+                msg_ev = f"⚠️ AVISO CLUB PARK - EVENTO EXTRAORDINARIO\nSede: {ev.get('Sitio / Unidad')}\nFecha: {ev.get('Fecha')} a las {ev.get('Horario')}\nResponsable: {ev.get('Elaboró')}\nFavor de estar atentos y asegurar la cobertura operativa."
+                c_btn_w1, c_btn_w2 = st.columns(2)
+                with c_btn_w1:
+                    st.link_button(f"Notificar a Jesús por WhatsApp", generar_enlace_whatsapp(tel_jesus, msg_ev), use_container_width=True)
+                with c_btn_w2:
+                    st.link_button(f"Notificar a Víctor por WhatsApp", generar_enlace_whatsapp(tel_victor, msg_ev), use_container_width=True)
+        else:
+            st.info("No hay eventos extraordinarios registrados recientemente.")
+
+    # TAB 6: Gestión y Edición de Reportes
+    with tab6:
         st.markdown("### 🗂️ Gestión, Edición y Eliminación de Reportes")
         if st.session_state.registros:
             opciones_rep = [
@@ -1681,8 +1785,8 @@ if es_contador:
         else:
             st.info("No hay reportes para gestionar.")
 
-        # TAB 6: Suite de Pruebas y Diagnóstico de Despliegue
-    with tab6:
+    # TAB 7: Suite de Pruebas y Diagnóstico de Despliegue
+    with tab7:
         st.markdown("### 🧪 Diagnóstico Automatizado del Sistema y Despliegue")
         st.markdown("Ejecuta la batería de pruebas unitarias para validar que el motor de Excel, la criptografía Fernet, la auditoría automática y la memoria de IA operan al 100%.")
 
@@ -1695,3 +1799,17 @@ if es_contador:
                     st.success("🎉 ¡Todas las pruebas han sido superadas con éxito!")
                 else:
                     st.warning("⚠️ Hay pruebas con observaciones.")
+
+# TAB 4: EVENTOS Y ALERTAS PARA SUPERVISOR
+if not es_contador:
+    with tab4:
+        st.markdown("### ⚡ Eventos Extraordinarios y Alertas")
+        st.markdown("Consulta aquí los eventos extraordinarios asignados para coordinar la operación con 2 horas de anticipación.")
+        evs_sup = [r for r in st.session_state.registros if r.get("Tipo") == "Evento Extraordinario"]
+        if evs_sup:
+            for ev in evs_sup[-5:]:
+                st.info(f"📍 **{ev.get('Sitio / Unidad')}** | Fecha: **{ev.get('Fecha')}** ({ev.get('Horario')}) | Responsable: {ev.get('Elaboró')}")
+        else:
+            st.caption("No hay eventos programados en este momento.")
+               
+        
