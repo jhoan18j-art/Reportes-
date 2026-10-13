@@ -1,4 +1,4 @@
- # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 CLUB PARK VALET Y ESTACIONAMIENTOS S.A. DE C.V.
 Sistema Inteligente de Control Operativo, Auditoría Automatizada y Rentabilidad
@@ -439,206 +439,6 @@ def evaluar_auditoria_reporte(reporte_dict, registros_existentes=None, memoria_i
     return score, nivel, fallas, observaciones
 
 # =========================================================================
-# PROCESAMIENTO DE IMÁGENES Y EXTRACCIÓN INTELIGENTE (ANDROIDE/MOBILE)
-# =========================================================================
-def guardar_imagen_optimizada(archivo_subido, id_reporte, sucursal, fecha_str):
-    """Comprime la imagen para ahorrar datos móviles y almacenamiento (JPEG q=75)."""
-    try:
-        archivo_subido.seek(0)
-        img = Image.open(archivo_subido)
-        if img.mode in ("RGBA", "P"):
-            img = img.convert("RGB")
-        img.thumbnail((1200, 1200))
-        suc_clean = "".join(c for c in sucursal if c.isalnum() or c in (" ", "_")).strip().replace(" ", "_")
-        fecha_clean = fecha_str.replace("/", "-")
-        nombre_archivo = f"{id_reporte}_{fecha_clean}_{suc_clean}.jpg"
-        ruta_completa = os.path.join(FOTOS_DIR, nombre_archivo)
-        img.save(ruta_completa, "JPEG", quality=75, optimize=True)
-        return ruta_completa
-    except Exception as e:
-        st.error(f"Error optimizando la foto: {e}")
-        return None
-
-def validar_y_analizar_foto_inteligente(archivo_subido, catalogo_sucursales, memoria_ia=None):
-    """
-    Extracción Inteligente por Computadora + OCR + Heurísticas de Aprendizaje:
-    1. Valida calidad, contraste y resolución para teléfonos móviles.
-    2. Extrae fecha, folios, sucursal, boletos, gastos y firmas.
-    3. Completa datos faltantes usando la Memoria Adaptativa de la IA.
-    """
-    resultado = {
-        "valida": False,
-        "ancho": 0,
-        "alto": 0,
-        "brillo": 0.0,
-        "mensaje": "",
-        "advertencias": [],
-        "datos_extraidos": {},
-        "confianza": 0,
-        "fuente_extraccion": "Heurística + Metadatos"
-    }
-
-    try:
-        archivo_subido.seek(0)
-        raw = archivo_subido.getvalue() if hasattr(archivo_subido, "getvalue") else archivo_subido.read()
-        if len(raw) > 12 * 1024 * 1024:
-            resultado["mensaje"] = "❌ La foto supera 12 MB. Reduce el tamaño o toma otra foto para ahorrar datos."
-            return resultado
-        archivo_subido.seek(0)
-        img = Image.open(archivo_subido)
-        w, h = img.size
-        if w * h > 30_000_000:
-            resultado["mensaje"] = "❌ La imagen tiene demasiados píxeles para procesarla de forma segura."
-            return resultado
-        resultado["ancho"] = w
-        resultado["alto"] = h
-
-        # Control de Exposición y Calidad
-        gris = img.convert("L")
-        stat = ImageStat.Stat(gris)
-        brillo = stat.mean[0]
-        resultado["brillo"] = round(brillo, 1)
-
-        if brillo < 30:
-            resultado["advertencias"].append("⚠️ Foto muy oscura. Enciende el flash de tu teléfono.")
-        elif brillo > 230:
-            resultado["advertencias"].append("⚠️ Reflejo blanco excesivo en la imagen.")
-        else:
-            resultado["valida"] = True
-
-        # Intento de OCR nativo
-        texto_ocr = ""
-        if PYTESSERACT_OK:
-            try:
-                texto_ocr = pytesseract.image_to_string(gris, lang="spa+eng", config="--psm 6")
-                if len(texto_ocr.strip()) > 10:
-                    resultado["fuente_extraccion"] = "OCR Visual + Patrones"
-            except Exception:
-                pass
-
-        nombre_archivo = getattr(archivo_subido, "name", "").upper()
-        texto_analisis = (texto_ocr + " " + nombre_archivo).upper()
-
-        datos = {}
-        confianza_pts = 0
-
-        # A. Detección de Sucursal con coincidencia exacta y difusa
-        sucursal_encontrada = None
-        for suc in catalogo_sucursales:
-            if suc.upper() in texto_analisis:
-                sucursal_encontrada = suc
-                confianza_pts += 30
-                break
-        
-        # Búsqueda difusa para abreviaciones conocidas
-        if not sucursal_encontrada:
-            alias_map = {
-                "CARAJ": "CARAJILLO", "SUSH": "SUSHITTO", "PAMPA": "PAMPAS",
-                "RAMA": "RAMMA", "BENI": "BENINGANS", "TLALP": "J.TLALPAN",
-                "DIVIS": "J.DIVISION", "PICACH": "J.PICACHO", "EMPRES": "J.EMPRESA",
-                "SATEL": "M SATÉLITE", "MARIN": "M MARINA", "CHURR": "CHURRASCA",
-                "RYO": "RYOSHI", "ENCANT": "ENCANTO", "CHEG": "CHEGARAY"
-            }
-            for pref, full_name in alias_map.items():
-                if pref in texto_analisis:
-                    sucursal_encontrada = full_name
-                    confianza_pts += 20
-                    break
-
-        if sucursal_encontrada:
-            datos["sucursal"] = sucursal_encontrada
-
-        # B. Detección de Folios
-        folio_match = re.search(r'(?:FOLIO|BOL|DEL|DE|F)?\s*[:\s#]*(\d{2,6})\s*(?:AL|A|-|HASTA)\s*(\d{2,6})', texto_analisis)
-        if folio_match:
-            try:
-                f1 = int(folio_match.group(1))
-                f2 = int(folio_match.group(2))
-                if f2 >= f1:
-                    datos["folio_inicial"] = f1
-                    datos["folio_final"] = f2
-                    confianza_pts += 35
-            except ValueError:
-                pass
-
-        # C. Detección de Fecha
-        fecha_match = re.search(r'(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})', texto_analisis)
-        if fecha_match:
-            try:
-                d, m, y = int(fecha_match.group(1)), int(fecha_match.group(2)), int(fecha_match.group(3))
-                if y < 100:
-                    y += 2000
-                datos["fecha"] = date(y, m, d)
-                confianza_pts += 20
-            except Exception:
-                pass
-        else:
-            datos["fecha"] = date.today()
-
-        # D. Detección de Boletos Sin Cobro / Cancelados / Gastos
-        sin_cobro_m = re.search(r'(?:SIN COBRO|S/C|CORTESIA)\s*[:\s]*(\d+)', texto_analisis)
-        if sin_cobro_m:
-            datos["sin_cobro"] = int(sin_cobro_m.group(1))
-
-        canc_m = re.search(r'(?:CANCELADOS?|CANC)\s*[:\s]*(\d+)', texto_analisis)
-        if canc_m:
-            datos["cancelados"] = int(canc_m.group(1))
-
-        gastos_m = re.search(r'(?:GASTO|NOMINA|TOTAL GASTOS)\s*[:\$]?\s*(\d+(?:\.\d{2})?)', texto_analisis)
-        if gastos_m:
-            datos["gastos_nomina"] = float(gastos_m.group(1))
-
-        # E. Importes y conteos explícitos (si OCR pudo leer etiquetas del formato)
-        bruto_m = re.search(r'(?:INGRESO\s*BRUTO|TOTAL\s*INGRESOS|BRUTO)\s*[:$\s]*([0-9][0-9,]*(?:\.\d{1,2})?)', texto_analisis)
-        if bruto_m:
-            try: datos["ingreso_bruto"] = float(bruto_m.group(1).replace(",", "")); confianza_pts += 10
-            except ValueError: pass
-        tarifa_m = re.search(r'(?:COSTO|PRECIO|TARIFA)\s*(?:POR\s*)?(?:BOLETO|TICKET)?\s*[:$\s]*([0-9][0-9,]*(?:\.\d{1,2})?)', texto_analisis)
-        if tarifa_m:
-            try: datos["costo_boleto"] = float(tarifa_m.group(1).replace(",", "")); confianza_pts += 10
-            except ValueError: pass
-        total_b_m = re.search(r'(?:TOTAL\s*BOLETOS|BOLETOS\s*EXPEDIDOS)\s*[:\s]*(\d+)', texto_analisis)
-        if total_b_m:
-            datos["total_boletos"] = int(total_b_m.group(1))
-
-        # E. Inferencia y Enriquecimiento por la Memoria IA si faltan datos
-        if sucursal_encontrada and memoria_ia and "sucursales" in memoria_ia:
-            suc_ia = memoria_ia["sucursales"].get(sucursal_encontrada)
-            if suc_ia:
-                # Predecir folio inicial si no fue detectado en la foto
-                if "folio_inicial" not in datos and suc_ia.get("ultimo_folio_final", 0) > 0:
-                    prediccion_ini = suc_ia["ultimo_folio_final"] + 1
-                    datos["folio_inicial"] = prediccion_ini
-                    datos["folio_final"] = prediccion_ini + int(suc_ia.get("promedio_boletos", 50))
-                    resultado["advertencias"].append(f"🤖 IA sugirió folios ({datos['folio_inicial']} a {datos['folio_final']}) con base en el historial previo.")
-
-                if "costo_boleto" not in datos:
-                    datos["costo_boleto"] = suc_ia.get("costo_habitual", PRECIOS_SUCURSALES.get(sucursal_encontrada, 50))
-
-        resultado["datos_extraidos"] = datos
-        resultado["confianza"] = min(100, confianza_pts + (20 if resultado["valida"] else 0))
-        
-        if not resultado["advertencias"]:
-            resultado["mensaje"] = f"✅ Imagen nítida ({w}x{h} px) | Confianza IA: {resultado['confianza']}%"
-        else:
-            resultado["mensaje"] = " | ".join(resultado["advertencias"])
-
-        return resultado
-    except Exception as e:
-        resultado["mensaje"] = f"❌ Error leyendo imagen: {e}"
-        return resultado
-
-def evaluar_rentabilidad(margen):
-    if margen >= 40.0:
-        return "🟢 Alta"
-    elif margen >= 15.0:
-        return "🟡 Moderada"
-    elif margen > 0.0:
-        return "🟠 Baja"
-    else:
-        return "🔴 Pérdida"
-
-# =========================================================================
 # GENERADOR DE EXCEL MULTI-HOJA BLINDADO (AUDITORÍA & RENTABILIDAD)
 # =========================================================================
 def generar_excel_completo(registros, historial_auditoria=None):
@@ -850,124 +650,213 @@ if "usuario_autenticado" not in st.session_state:
     st.session_state.usuario_autenticado = None
     st.session_state.rol = None
 
-
 def on_sucursal_change():
     seleccion = st.session_state.get("select_sitio")
-
     if seleccion in PRECIOS_SUCURSALES:
         st.session_state["costo_boleto_input"] = PRECIOS_SUCURSALES[seleccion]
-
 
 if "costo_boleto_input" not in st.session_state:
     st.session_state["costo_boleto_input"] = 40
 
+# =========================================================================
+# PANTALLA DE ACCESO (LOGIN)
+# =========================================================================
+if st.session_state.usuario_autenticado is None:
+    col_l1, col_l2, col_l3 = st.columns([1, 2, 1])
+    with col_l2:
+        logo_path = os.path.join(BASE_DIR, "logo.png")
+        if os.path.exists(logo_path):
+            st.image(logo_path, width=320)
+        else:
+            st.markdown("<h1 style='text-align: center;'>🚗 CLUB PARK</h1>", unsafe_allow_html=True)
 
-with tab_reportes:
-    st.subheader("Reportes")
+        st.markdown("<h3 style='text-align: center; color: #4A5568;'>Control Operativo y Financiero</h3>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #718096; font-size: 0.9rem;'>Acceso seguro desde cualquier teléfono Android o navegador web</p>", unsafe_allow_html=True)
+        st.markdown("---")
 
-    opciones_rep = [
-        f"{r.get('ID')} | {r.get('Fecha')} | "
-        f"{r.get('Sitio / Unidad')} | "
-        f"Neto: ${r.get('Ingreso Neto', 0) or 0:,.2f}"
-        for r in st.session_state.registros
-    ]
+        nombre_usuario = st.selectbox(
+            "Selecciona tu Usuario:",
+            ["-- Selecciona --", "Víctor Manuel", "José de Jesús", "Víctor (Contador)"],
+            key="login_user"
+        )
+        password = st.text_input("Contraseña de Acceso:", type="password", key="login_pass")
 
-    if opciones_rep:
-        sel_rep = st.selectbox(
-            "Seleccionar reporte:",
-            opciones_rep,
-            key="sel_rep_gest"
+        pass_visor = obtener_secreto("PASS_SUPERVISOR", "")
+        pass_auditor = obtener_secreto("PASS_AUDITOR", "")
+        if not pass_visor or not pass_auditor:
+            st.error("Acceso bloqueado: configura PASS_SUPERVISOR y PASS_AUDITOR en Secrets de Streamlit antes de usar la aplicación.")
+            st.stop()
+
+        if st.button("🔑 Iniciar Sesión", use_container_width=True, type="primary"):
+            if nombre_usuario in ["Víctor Manuel", "José de Jesús"] and hmac.compare_digest(password, pass_visor):
+                st.session_state.usuario_autenticado = nombre_usuario
+                st.session_state.rol = "Supervisor"
+                registrar_evento_auditoria("Inicio de Sesión", nombre_usuario, "-", "-", "-", "Supervisor ingresó al sistema.")
+                st.success(f"Bienvenido {nombre_usuario}")
+                st.rerun()
+            elif nombre_usuario == "Víctor (Contador)" and hmac.compare_digest(password, pass_auditor):
+                st.session_state.usuario_autenticado = "Víctor (Contador)"
+                st.session_state.rol = "Contador Auditor"
+                registrar_evento_auditoria("Inicio de Sesión", "Víctor (Contador)", "-", "-", "-", "Contador Auditor ingresó al panel de control.")
+                st.success("Acceso concedido como Contador Auditor")
+                st.rerun()
+            else:
+                st.error("❌ Contraseña incorrecta o usuario no seleccionado.")
+        st.stop()
+
+# =========================================================================
+# BARRA SUPERIOR Y LATERAL (NAVBAR & KPIS)
+# =========================================================================
+es_contador = (st.session_state.rol == "Contador Auditor")
+memoria_ia_global = cargar_memoria_ia()
+
+col_nav1, col_nav2 = st.columns([1, 4])
+with col_nav1:
+    logo_path = os.path.join(BASE_DIR, "logo.png")
+    if os.path.exists(logo_path):
+        st.image(logo_path, width=180)
+    else:
+        st.markdown("### 🚗 **CLUB PARK**")
+
+with col_nav2:
+    st.markdown(f"### CLUB PARK VALET Y ESTACIONAMIENTOS S.A. DE C.V.")
+    st.markdown(f"**Usuario:** `{st.session_state.usuario_autenticado}` | **Rol:** `{st.session_state.rol}` | 📱 **Compatible con Android** · fotos comprimidas; requiere conexión y puede consumir datos móviles")
+
+if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
+    st.session_state.usuario_autenticado = None
+    st.session_state.rol = None
+    st.rerun()
+
+st.sidebar.markdown("---")
+fotos_disco = [f for f in os.listdir(FOTOS_DIR) if not f.startswith('.')] if os.path.exists(FOTOS_DIR) else []
+st.sidebar.markdown(f"📊 **Reportes en Sistema:** `{len(st.session_state.registros)}`")
+st.sidebar.markdown(f"📷 **Fotos Guardadas:** `{len(fotos_disco)}`")
+st.sidebar.markdown(f"🧠 **Reportes Aprendidos por IA:** `{memoria_ia_global.get('total_reportes_procesados', 0)}`")
+
+# DESCARGA DE EXCEL CORPORATIVO EN SIDEBAR
+if st.session_state.registros:
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 📥 Descargas Oficiales")
+    historial_aud_sidebar = cargar_historial_auditoria()
+    excel_data, estado_excel = generar_excel_completo(st.session_state.registros, historial_aud_sidebar)
+    if estado_excel == "OK" and excel_data:
+        st.sidebar.download_button(
+            label="📊 Descargar Excel Financiero",
+            data=excel_data,
+            file_name=f"ClubPark_Balance_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+    else:
+        df_csv = pd.DataFrame(st.session_state.registros)
+        st.sidebar.download_button(
+            label="📄 Descargar Respaldo CSV",
+            data=df_csv.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"ClubPark_Respaldo_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+            mime="text/csv",
+            use_container_width=True
         )
 
-        idx_rep = opciones_rep.index(sel_rep)
-        rep_data = st.session_state.registros[idx_rep]
-
-        c_g1, c_g2 = st.columns([2, 1])
-
-        with c_g1:
-            st.json(rep_data)
-
-        with c_g2:
-            foto_p = rep_data.get("foto_path")
-
-            if foto_p and os.path.exists(foto_p):
-                st.image(
-                    foto_p,
-                    caption="Fotografía vinculada",
+# RESPALDO CIFRADO EN SIDEBAR (SOLO AUDITOR)
+if es_contador:
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🔒 Respaldos Cifrados Fernet")
+    clave_backup = st.sidebar.text_input("Clave de cifrado:", type="password", key="pass_bkp_side")
+    if st.sidebar.button("🛡️ Cifrar y Descargar Base de Datos", use_container_width=True):
+        if not clave_backup:
+            st.sidebar.error("Ingresa una clave secreta.")
+        elif not CRYPTOGRAPHY_OK:
+            st.sidebar.error("Librería cryptography no disponible.")
+        else:
+            paquete = cifrar_respaldo_seguro(st.session_state.registros, clave_backup)
+            if paquete:
+                st.sidebar.download_button(
+                    label="💾 Descargar .enc",
+                    data=paquete.encode("utf-8"),
+                    file_name=f"ClubPark_Backup_Fernet_{datetime.now().strftime('%Y%m%d_%H%M')}.enc",
+                    mime="application/json",
                     use_container_width=True
                 )
-            else:
-                st.caption("📷 Sin fotografía física vinculada.")
 
-        if st.button(
-            "✅ Registrar revisión de auditoría",
-            key="btn_review_r_aud",
-            use_container_width=True
-        ):
-            (
-                audit_score,
-                audit_level,
-                audit_fallas,
-                audit_obs
-            ) = evaluar_auditoria_reporte(
-                rep_data,
-                st.session_state.registros,
-                memoria_ia_global
-            )
+# =========================================================================
+# VISTAS PRINCIPALES POR PESTAÑAS
+# =========================================================================
+if es_contador:
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "📷 Subir con Foto (1-Clic)",
+        "📈 Rentabilidad por Sucursal",
+        "🕵️ Auditoría y Hallazgos",
+        "⚡ Evento Extraordinario",
+        "🗂️ Gestión de Reportes",
+        "🧪 Pruebas de Despliegue"
+    ])
+else:
+    tab1, tab2, tab3 = st.tabs([
+        "📷 Subir con Foto (1-Clic)",
+        "📈 Rentabilidad de Mis Sucursales",
+        "📋 Mis Reportes Operativos"
+    ])
 
-            registrar_evento_auditoria(
-                "Aprobación de Auditoría"
-                if not audit_fallas
-                else "Revisión de Auditoría",
-                st.session_state.usuario_autenticado,
-                rep_data.get("ID"),
-                rep_data.get("Sitio / Unidad"),
-                rep_data.get("Fecha"),
-                (
-                    f"Revisión manual solicitada. Resultado: "
-                    f"{audit_level}; {len(audit_fallas)} hallazgo(s)."
-                ),
-                score=audit_score,
-                fallas=audit_fallas
-            )
+# =========================================================================
+# TAB 1: SUBIR INFORMACIÓN CON SOLO CARGAR LA FOTO (OPTIMIZADO ANDROID)
+# =========================================================================
+with tab1:
+    st.markdown("### 📷 Subida Automática por Fotografía de Reporte")
+    st.markdown("Carga la foto de la hoja física o tómala con la cámara. El OCR y las reglas locales extraen/sugieren datos; revísalos antes de guardar. Las alertas de auditoría son controles automáticos, no una aprobación contable.")
 
-            st.success(
-                f"Revisión registrada: {audit_level}. "
-                "Consulta la bitácora para el detalle."
-            )
+    col_captura1, col_captura2 = st.columns([1, 1])
+    with col_captura1:
+        modo_captura = st.radio(
+            "Método de Captura en Teléfono:",
+            ["📱 Tomar foto con la Cámara", "📁 Seleccionar de la Galería"],
+            horizontal=True
+        )
 
-        if st.button(
-            "🗑️ Eliminar Reporte y Archivo Adjunto",
-            key="btn_del_r_aud",
-            type="primary"
-        ):
-            if foto_p and os.path.exists(foto_p):
-                try:
-                    os.remove(foto_p)
-                except Exception:
-                    pass
-
-            eliminado = st.session_state.registros.pop(idx_rep)
-
-            guardar_registros_permanentes(
-                st.session_state.registros
-            )
-
-            registrar_evento_auditoria(
-                "Eliminación",
-                st.session_state.usuario_autenticado,
-                eliminado.get("ID"),
-                eliminado.get("Sitio / Unidad"),
-                eliminado.get("Fecha"),
-                "Reporte eliminado por el Auditor."
-            )
-
-            st.success("✅ Reporte eliminado del sistema.")
-            st.rerun()
-
+    foto_cargada = None
+    if modo_captura == "📱 Tomar foto con la Cámara":
+        foto_cargada = st.camera_input("Enfoca la hoja física del reporte:", key="camera_uploader")
     else:
-        st.info("No hay reportes para gestionar.")
-     
+        foto_cargada = st.file_uploader(
+            "Selecciona la foto del reporte (PNG o JPG):",
+            type=["png", "jpg", "jpeg", "webp"],
+            key="uploader_mobile_photo"
+        )
+
+                with c_g1:
+                st.json(rep_data)
+            with c_g2:
+                foto_p = rep_data.get("foto_path")
+                if foto_p and os.path.exists(foto_p):
+                    st.image(foto_p, caption="Fotografía vinculada", use_container_width=True)
+                else:
+                    st.caption("📷 Sin fotografía física vinculada.")
+
+            if st.button("✅ Registrar revisión de auditoría", key="btn_review_r_aud", use_container_width=True):
+                audit_score, audit_level, audit_fallas, audit_obs = evaluar_auditoria_reporte(rep_data, st.session_state.registros, memoria_ia_global)
+                registrar_evento_auditoria(
+                    "Aprobación de Auditoría" if not audit_fallas else "Revisión de Auditoría",
+                    st.session_state.usuario_autenticado,
+                    rep_data.get("ID"), rep_data.get("Sitio / Unidad"), rep_data.get("Fecha"),
+                    f"Revisión manual solicitada. Resultado: {audit_level}; {len(audit_fallas)} hallazgo(s).",
+                    score=audit_score,
+                    fallas=audit_fallas
+                )
+                st.success(f"Revisión registrada: {audit_level}. Consulta la bitácora para el detalle.")
+
+             if st.button("🗑️ Eliminar Reporte y Archivo Adjunto", key="btn_del_r_aud", type="primary"):
+                if foto_p and os.path.exists(foto_p):
+                    try:
+                        os.remove(foto_p)
+                    except Exception:
+                        pass
+                eliminado = st.session_state.registros.pop(idx_rep)
+                guardar_registros_permanentes(st.session_state.registros)
+                registrar_evento_auditoria("Eliminación", st.session_state.usuario_autenticado, eliminado.get("ID"), eliminado.get("Sitio / Unidad"), eliminado.get("Fecha"), "Reporte eliminado por el Auditor.")
+                st.success("✅ Reporte eliminado del sistema.")
+                st.rerun()
+        else:
+            st.info("No hay reportes para gestionar.")
+
     # TAB 6: Suite de Pruebas y Diagnóstico de Despliegue
     with tab6:
         st.markdown("### 🧪 Diagnóstico Automatizado del Sistema y Despliegue")
