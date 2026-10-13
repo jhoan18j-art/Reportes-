@@ -850,15 +850,19 @@ if "usuario_autenticado" not in st.session_state:
     st.session_state.usuario_autenticado = None
     st.session_state.rol = None
 
+
 def on_sucursal_change():
     seleccion = st.session_state.get("select_sitio")
+
     if seleccion in PRECIOS_SUCURSALES:
         st.session_state["costo_boleto_input"] = PRECIOS_SUCURSALES[seleccion]
+
 
 if "costo_boleto_input" not in st.session_state:
     st.session_state["costo_boleto_input"] = 40
 
-      with tab_reportes:
+
+with tab_reportes:
     st.subheader("Reportes")
 
     opciones_rep = [
@@ -869,63 +873,101 @@ if "costo_boleto_input" not in st.session_state:
     ]
 
     if opciones_rep:
-        seleccion = st.selectbox("Selecciona un registro", opciones_rep)
-    else:
-        st.info("Todavía no hay registros guardados.")
-     
+        sel_rep = st.selectbox(
+            "Seleccionar reporte:",
+            opciones_rep,
+            key="sel_rep_gest"
+        )
 
-if opciones_rep:
-    sel_rep = st.selectbox(
-        "Seleccionar reporte:",
-        opciones_rep,
-        key="sel_rep_gest"
-    )
-    idx_rep = opciones_rep.index(sel_rep)
-    rep_data = st.session_state.registros[idx_rep]
-else:
-    st.info("No hay reportes para gestionar.")
+        idx_rep = opciones_rep.index(sel_rep)
+        rep_data = st.session_state.registros[idx_rep]
 
-            idx_rep = opciones_rep.index(sel_rep)
-            rep_data = st.session_state.registros[idx_rep]
-        else:
-            st.info("No hay reportes para gestionar.")
+        c_g1, c_g2 = st.columns([2, 1])
 
-            c_g1, c_g2 = st.columns([2, 1])
-            with c_g1:
-                st.json(rep_data)
-            with c_g2:
-                foto_p = rep_data.get("foto_path")
-                if foto_p and os.path.exists(foto_p):
-                    st.image(foto_p, caption="Fotografía vinculada", use_container_width=True)
-                else:
-                    st.caption("📷 Sin fotografía física vinculada.")
+        with c_g1:
+            st.json(rep_data)
 
-            if st.button("✅ Registrar revisión de auditoría", key="btn_review_r_aud", use_container_width=True):
-                audit_score, audit_level, audit_fallas, audit_obs = evaluar_auditoria_reporte(rep_data, st.session_state.registros, memoria_ia_global)
-                registrar_evento_auditoria(
-                    "Aprobación de Auditoría" if not audit_fallas else "Revisión de Auditoría",
-                    st.session_state.usuario_autenticado,
-                    rep_data.get("ID"), rep_data.get("Sitio / Unidad"), rep_data.get("Fecha"),
-                    f"Revisión manual solicitada. Resultado: {audit_level}; {len(audit_fallas)} hallazgo(s).",
-                    score=audit_score,
-                    fallas=audit_fallas
+        with c_g2:
+            foto_p = rep_data.get("foto_path")
+
+            if foto_p and os.path.exists(foto_p):
+                st.image(
+                    foto_p,
+                    caption="Fotografía vinculada",
+                    use_container_width=True
                 )
-                st.success(f"Revisión registrada: {audit_level}. Consulta la bitácora para el detalle.")
+            else:
+                st.caption("📷 Sin fotografía física vinculada.")
 
-            if st.button("🗑️ Eliminar Reporte y Archivo Adjunto", key="btn_del_r_aud", type="primary"):
-                if foto_p and os.path.exists(foto_p):
-                    try:
-                        os.remove(foto_p)
-                    except Exception:
-                        pass
-                eliminado = st.session_state.registros.pop(idx_rep)
-                guardar_registros_permanentes(st.session_state.registros)
-                registrar_evento_auditoria("Eliminación", st.session_state.usuario_autenticado, eliminado.get("ID"), eliminado.get("Sitio / Unidad"), eliminado.get("Fecha"), "Reporte eliminado por el Auditor.")
-                st.success("✅ Reporte eliminado del sistema.")
-                st.rerun()
-        else:
-            st.info("No hay reportes para gestionar.")
+        if st.button(
+            "✅ Registrar revisión de auditoría",
+            key="btn_review_r_aud",
+            use_container_width=True
+        ):
+            (
+                audit_score,
+                audit_level,
+                audit_fallas,
+                audit_obs
+            ) = evaluar_auditoria_reporte(
+                rep_data,
+                st.session_state.registros,
+                memoria_ia_global
+            )
 
+            registrar_evento_auditoria(
+                "Aprobación de Auditoría"
+                if not audit_fallas
+                else "Revisión de Auditoría",
+                st.session_state.usuario_autenticado,
+                rep_data.get("ID"),
+                rep_data.get("Sitio / Unidad"),
+                rep_data.get("Fecha"),
+                (
+                    f"Revisión manual solicitada. Resultado: "
+                    f"{audit_level}; {len(audit_fallas)} hallazgo(s)."
+                ),
+                score=audit_score,
+                fallas=audit_fallas
+            )
+
+            st.success(
+                f"Revisión registrada: {audit_level}. "
+                "Consulta la bitácora para el detalle."
+            )
+
+        if st.button(
+            "🗑️ Eliminar Reporte y Archivo Adjunto",
+            key="btn_del_r_aud",
+            type="primary"
+        ):
+            if foto_p and os.path.exists(foto_p):
+                try:
+                    os.remove(foto_p)
+                except Exception:
+                    pass
+
+            eliminado = st.session_state.registros.pop(idx_rep)
+
+            guardar_registros_permanentes(
+                st.session_state.registros
+            )
+
+            registrar_evento_auditoria(
+                "Eliminación",
+                st.session_state.usuario_autenticado,
+                eliminado.get("ID"),
+                eliminado.get("Sitio / Unidad"),
+                eliminado.get("Fecha"),
+                "Reporte eliminado por el Auditor."
+            )
+
+            st.success("✅ Reporte eliminado del sistema.")
+            st.rerun()
+
+    else:
+        st.info("No hay reportes para gestionar.")
+     
     # TAB 6: Suite de Pruebas y Diagnóstico de Despliegue
     with tab6:
         st.markdown("### 🧪 Diagnóstico Automatizado del Sistema y Despliegue")
