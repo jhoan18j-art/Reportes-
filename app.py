@@ -196,7 +196,7 @@ PRECIOS_SUCURSALES = {
     "J.DIVISION": 100, "J.PICACHO": 100, "J.EMPRESA": 100, "sipily": 80,
     "M SATÉLITE": 70, "M MARINA": 70, "VETERINARIA": 0, "CLÍNICA": 100,
     "SUMO STA": 50, "CHEGARAY": 50, "RYOSHI": 80, "ENCANTO": 90,
-    "S. AZURA": 0, "E-BNI": 0, "CHURRASCA": 70
+    "S. AZURA": 0, "E-BNI": 0, "CHURRASCA": 70, "SUMO PICACHO": 50
 }
 
 UNIDADES_JESUS = ["PAMPAS", "RAMMA", "SUSHITTO", "BARRANCA", "CARAJILLO", "BENINGANS", "CLÍNICA"]
@@ -654,7 +654,7 @@ def validar_y_analizar_foto_inteligente(archivo_subido, catalogo_sucursales, mem
         # Búsqueda difusa para abreviaciones conocidas
         if not sucursal_encontrada:
             alias_map = {
-                   "SUMO PICACHO": "SUMO PICACHO","CARAJ": "CARAJILLO", "SUSH": "SUSHITTO", "PAMPA ": "PAMPAS",
+                "SUMO PICACHO": "SUMO PICACHO","CARAJ": "CARAJILLO", "SUSH": "SUSHITTO", "PAMPA ": "PAMPAS",
                 "RAMA": "RAMMA", "BENI": "BENINGANS", "TLALP": "J.TLALPAN",
                 "DIVIS": "J.DIVISION", "PICACH": "J.PICACHO", "EMPRES": "J.EMPRESA",
                 "SATEL": "M SATÉLITE", "MARIN": "M MARINA", "CHURR": "CHURRASCA",
