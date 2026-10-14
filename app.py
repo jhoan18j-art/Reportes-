@@ -227,8 +227,7 @@ PRECIOS_SUCURSALES = {
     "J.DIVISION": 100, "J.PICACHO": 100, "J.EMPRESA": 100, "sipily": 80,
     "M SATÉLITE": 70, "M MARINA": 70, "VETERINARIA": 0, "CLÍNICA": 100,
     "SUMO STA": 50, "CHEGARAY": 50, "RYOSHI": 80, "ENCANTO": 90,
-    "S. AZURA": 0, "E-BNI": 0, "CHURRASCA": 70, "SUMO PICACHO": 50
-    
+    "S. AZURA": 0, "E-BNI": 0, "CHURRASCA": 70
 }
 
 UNIDADES_JESUS = ["PAMPAS", "RAMMA", "SUSHITTO", "BARRANCA", "CARAJILLO", "BENINGANS", "CLÍNICA"]
@@ -383,24 +382,31 @@ def actualizar_memoria_ia(reporte):
         "promedio_ingreso_bruto": 0.0,
         "promedio_gastos": 0.0,
         "margen_promedio": 0.0,
+        "boletos_m2": 0.0, "gastos_m2": 0.0,
         "ultimo_folio_final": 0,
         "horario_frecuente": "13:00 a 23:00",
         "supervisor_frecuente": reporte.get("Elaboró", "Supervisor")
     })
 
-    n = suc_mem["reportes_aprendidos"]
+    n = int(suc_mem.get("reportes_aprendidos", 0))
     nuevo_n = n + 1
-    boletos = reporte.get("Boletos Cobrados", 0)
-    bruto = reporte.get("Ingreso Bruto", 0.0)
-    gastos = reporte.get("Total Gastos", 0.0)
-    margen = reporte.get("Margen (%)", 0.0)
-    folio_final = reporte.get("Folio Final", 0)
+    boletos = float(reporte.get("Boletos Cobrados", 0) or 0)
+    bruto = float(reporte.get("Ingreso Bruto", 0) or 0)
+    gastos = float(reporte.get("Total Gastos", 0) or 0)
+    margen = float(reporte.get("Margen (%)", 0) or 0)
+    folio_final = int(reporte.get("Folio Final", 0) or 0)
 
-    # Cálculo de medias móviles actualizadas
-    suc_mem["promedio_boletos"] = round(((suc_mem["promedio_boletos"] * n) + boletos) / nuevo_n, 1)
-    suc_mem["promedio_ingreso_bruto"] = round(((suc_mem["promedio_ingreso_bruto"] * n) + bruto) / nuevo_n, 2)
-    suc_mem["promedio_gastos"] = round(((suc_mem["promedio_gastos"] * n) + gastos) / nuevo_n, 2)
-    suc_mem["margen_promedio"] = round(((suc_mem["margen_promedio"] * n) + margen) / nuevo_n, 2)
+    # Promedios y varianzas online (Welford): cada reporte confirmado actualiza
+    # el perfil estadístico de la sucursal sin retener datos personales extra.
+    mean_b = float(suc_mem.get("promedio_boletos", 0) or 0)
+    mean_g = float(suc_mem.get("promedio_gastos", 0) or 0)
+    delta_b, delta_g = boletos - mean_b, gastos - mean_g
+    suc_mem["promedio_boletos"] = round(mean_b + delta_b / nuevo_n, 1)
+    suc_mem["promedio_gastos"] = round(mean_g + delta_g / nuevo_n, 2)
+    suc_mem["boletos_m2"] = float(suc_mem.get("boletos_m2", 0) or 0) + delta_b * (boletos - suc_mem["promedio_boletos"])
+    suc_mem["gastos_m2"] = float(suc_mem.get("gastos_m2", 0) or 0) + delta_g * (gastos - suc_mem["promedio_gastos"])
+    suc_mem["promedio_ingreso_bruto"] = round(((float(suc_mem.get("promedio_ingreso_bruto", 0) or 0) * n) + bruto) / nuevo_n, 2)
+    suc_mem["margen_promedio"] = round(((float(suc_mem.get("margen_promedio", 0) or 0) * n) + margen) / nuevo_n, 2)
     if folio_final > 0:
         suc_mem["ultimo_folio_final"] = max(suc_mem.get("ultimo_folio_final", 0), folio_final)
     suc_mem["reportes_aprendidos"] = nuevo_n
@@ -472,7 +478,6 @@ def evaluar_auditoria_reporte(reporte_dict, registros_existentes=None, memoria_i
         if tarifa_catalogo > 0 and costo_bol > 0 and abs(costo_bol - tarifa_catalogo) > 0.01:
             observaciones.append(f"📌 Tarifa capturada (${costo_bol:,.2f}) distinta a la tarifa de referencia del catálogo (${tarifa_catalogo:,.2f}); confirmar antes de aprobar.")
 
-    
     # 3. Regla de Cuadre Neto
     neto_esperado = bruto - tot_gastos
     if abs(neto - neto_esperado) > 1.0:
@@ -530,24 +535,29 @@ def evaluar_auditoria_reporte(reporte_dict, registros_existentes=None, memoria_i
             prom_gasto = perfil.get("promedio_gastos", 0.0)
             margen_hist = perfil.get("margen_promedio", 0.0)
 
-            # Desviación anómala de boletos (+/- 75% del volumen aprendido)
-            if prom_bol > 15 and cobrados > 0:
-                if cobrados > (prom_bol * 2.2):
-                    observaciones.append(f"🤖 IA Adaptativa: Volumen inusualmente alto ({cobrados} vs media de {prom_bol:.0f} boletos).")
-                elif cobrados < (prom_bol * 0.25):
+            # Umbrales híbridos: variabilidad aprendida y límites prudentes.
+            std_b = (max(0.0, float(perfil.get("boletos_m2", 0) or 0) / max(1, reps_previos - 1)) ** 0.5) if reps_previos > 1 else 0.0
+            umbral_bajo = max(0.0, prom_bol - max(3.0 * std_b, prom_bol * 0.75))
+            umbral_alto = prom_bol + max(3.0 * std_b, prom_bol * 1.20)
+            if reps_previos >= 5 and prom_bol > 15 and cobrados > 0:
+                if cobrados > umbral_alto:
+                    observaciones.append(f"🤖 Perfil histórico: volumen alto ({cobrados}) frente al rango habitual de {prom_bol:.0f} ± {std_b:.0f}; confirmar día/evento especial.")
+                elif cobrados < umbral_bajo:
                     score -= 10
                     fallas.append({
                         "regla": "Anomalía de Afluencia Adaptativa",
-                        "detalle": f"Boletos inusualmente bajos ({cobrados}) frente a la tendencia histórica aprendida ({prom_bol:.0f} boletos).",
+                        "detalle": f"Boletos ({cobrados}) por debajo del rango estadístico aprendido (media {prom_bol:.0f}, desviación {std_b:.0f}).",
                         "gravedad": "MEDIA"
                     })
 
+            std_g = (max(0.0, float(perfil.get("gastos_m2", 0) or 0) / max(1, reps_previos - 1)) ** 0.5) if reps_previos > 1 else 0.0
+            limite_gastos = prom_gasto + max(3.0 * std_g, prom_gasto * 1.0)
             # Desviación anómala de gastos frente a la historia de la sucursal
-            if prom_gasto > 0 and tot_gastos > (prom_gasto * 2.0):
+            if reps_previos >= 5 and prom_gasto > 0 and tot_gastos > limite_gastos:
                 score -= 15
                 fallas.append({
                     "regla": "Gasto Anómalo vs Historial IA",
-                    "detalle": f"Gastos (${tot_gastos:,.2f}) duplican el promedio histórico de la unidad (${prom_gasto:,.2f}).",
+                    "detalle": f"Gastos (${tot_gastos:,.2f}) exceden el umbral estadístico aprendido (${limite_gastos:,.2f}; media ${prom_gasto:,.2f}, desviación ${std_g:,.2f}).",
                     "gravedad": "ALTA"
                 })
 
@@ -1363,6 +1373,10 @@ with tab1:
         tot_bol_calc = calcular_boletos_block100(int(f_ini_final), int(f_fin_final))
         cobrados_calc = max(0, tot_bol_calc - int(f_sin_final) - int(f_can_final))
         bruto_calc = cobrados_calc * float(costo_boleto_final)
+        if int(f_ini_final) > 0 or int(f_fin_final) > 0:
+            st.info(f"Folio {int(f_ini_final)} → {int(f_fin_final)}: **{tot_bol_calc} boletos** contados por los dos últimos dígitos en ciclo de 100; menos cortesías/cancelados = **{cobrados_calc} cobrados**.")
+        if int(f_sin_final) + int(f_can_final) + int(f_per_final) > tot_bol_calc:
+            st.error("Cortesías, cancelados y perdidos superan el total calculado. Corrige el desglose antes de guardar.")
 
     st.markdown("#### 💵 Egresos Operativos y Firmas")
     c_egr1, c_egr2, c_fir1, c_fir2 = st.columns(4)
@@ -1478,6 +1492,7 @@ with tab1:
                 "Nivel Auditoría": nivel_aud,
                 "Fallas Auditoría": [f["regla"] for f in fallas_aud],
                 "Elaboró": elaboro_nombre if elaboro_nombre else st.session_state.usuario_autenticado,
+                "Usuario": st.session_state.usuario_autenticado,
                 "Recibe": recibe_nombre,
                 "Tipo": "Operación Regular",
                 "foto_path": ruta_foto,
@@ -1721,6 +1736,7 @@ if es_contador:
                     "Rentabilidad": evaluar_rentabilidad(ev_margen),
                     "Score Auditoría": 100,
                     "Elaboró": ev_elab,
+                    "Usuario": st.session_state.usuario_autenticado,
                     "Recibe": "Víctor (Contador)",
                     "Tipo": "Evento Extraordinario",
                     "foto_path": None,
@@ -1800,13 +1816,46 @@ if es_contador:
     # TAB 6: Gestión y Edición de Reportes
     with tab6:
         st.markdown("### 🗂️ Gestión, Edición y Eliminación de Reportes")
+        st.caption("Reportes organizados por la cuenta que los registró. Los reportes históricos sin ese dato se agrupan según el campo ‘Elaboró’; confirma autoría antes de atribuirlos.")
         if st.session_state.registros:
-            opciones_rep = [
-                f"{r.get('ID')} | {r.get('Fecha')} | {r.get('Sitio / Unidad')} | Neto: ${r.get('Ingreso Neto', 0):,.2f}"
-                for r in st.session_state.registros
-            ]
-            sel_rep = st.selectbox("Seleccionar reporte:", opciones_rep, key="sel_rep_gest")
-            idx_rep = opciones_rep.index(sel_rep)
+            grupos = {
+                "Víctor Manuel": [],
+                "José de Jesús": [],
+                "Víctor (Contador)": [],
+                "Sin usuario identificable": []
+            }
+            for r in st.session_state.registros:
+                owner = r.get("Usuario") or r.get("Elaboró")
+                if owner in ("Víctor Manuel", "José de Jesús", "Víctor (Contador)"):
+                    grupos[owner].append(r)
+                else:
+                    grupos["Sin usuario identificable"].append(r)
+            c_v, c_j, c_a = st.columns(3)
+            for col, nombre, emoji in [(c_v, "Víctor Manuel", "👤"), (c_j, "José de Jesús", "👤"), (c_a, "Víctor (Contador)", "🕵️")]:
+                with col:
+                    st.markdown(f"#### {emoji} {nombre} · {len(grupos[nombre])} reporte(s)")
+                    lista = grupos[nombre]
+                    if lista:
+                        st.dataframe(pd.DataFrame([{
+                            "ID": r.get("ID"), "Fecha": r.get("Fecha"), "Sucursal": r.get("Sitio / Unidad"),
+                            "Boletos": r.get("Boletos Cobrados"), "Ingreso neto": r.get("Ingreso Neto"),
+                            "Auditoría": r.get("Nivel Auditoría", "Pendiente")
+                        } for r in lista]), use_container_width=True, hide_index=True)
+                    else:
+                        st.caption("Sin reportes registrados.")
+            if grupos["Sin usuario identificable"]:
+                with st.expander(f"⚠️ Históricos sin usuario identificable ({len(grupos['Sin usuario identificable'])})"):
+                    st.dataframe(pd.DataFrame(grupos["Sin usuario identificable"]), use_container_width=True, hide_index=True)
+
+            opciones_rep = []
+            indice_por_etiqueta = {}
+            for nombre, lista in grupos.items():
+                for r in lista:
+                    etiqueta = f"{nombre} | {r.get('ID')} | {r.get('Fecha')} | {r.get('Sitio / Unidad')} | Neto: ${r.get('Ingreso Neto', 0):,.2f}"
+                    opciones_rep.append(etiqueta)
+                    indice_por_etiqueta[etiqueta] = st.session_state.registros.index(r)
+            sel_rep = st.selectbox("Selecciona reporte para revisar, auditar o eliminar:", opciones_rep, key="sel_rep_gest")
+            idx_rep = indice_por_etiqueta[sel_rep]
             rep_data = st.session_state.registros[idx_rep]
 
             c_g1, c_g2 = st.columns([2, 1])
@@ -1871,3 +1920,6 @@ if not es_contador:
                 st.info(f"📍 **{ev.get('Sitio / Unidad')}** | Fecha: **{ev.get('Fecha')}** ({ev.get('Horario')}) | Responsable: {ev.get('Elaboró')}")
         else:
             st.caption("No hay eventos programados en este momento.")
+        
+    
+ 
