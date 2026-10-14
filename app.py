@@ -684,7 +684,7 @@ def validar_y_analizar_foto_inteligente(archivo_subido, catalogo_sucursales, mem
         # Búsqueda difusa para abreviaciones conocidas
         if not sucursal_encontrada:
             alias_map = {
-                "SUMO PICACHO": "CARAJ": "CARAJILLO", "SUSH": "SUSHITTO", "PAMPA": "PAMPAS",
+                "CARAJ": "CARAJILLO", "SUSH": "SUSHITTO", "PAMPA": "PAMPAS",
                 "RAMA": "RAMMA", "BENI": "BENINGANS", "TLALP": "J.TLALPAN",
                 "DIVIS": "J.DIVISION", "PICACH": "J.PICACHO", "EMPRES": "J.EMPRESA",
                 "SATEL": "M SATÉLITE", "MARIN": "M MARINA", "CHURR": "CHURRASCA",
