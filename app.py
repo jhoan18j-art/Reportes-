@@ -943,126 +943,625 @@ def evaluar_rentabilidad(margen):
 # =========================================================================
 # GENERADOR DE EXCEL MULTI-HOJA BLINDADO (AUDITORÍA & RENTABILIDAD)
 # =========================================================================
-def generar_excel_completo(registros, historial_auditoria=None):
+
+def mostrar_filtro_periodo_registros(registros, key_prefix, incluir_todos=True):
+    """Muestra período y alcance (global/sucursal/usuario) y devuelve registros filtrados."""
+    opciones = ["Semanal (Últimos 7 días)", "Quincenal (Últimos 15 días)", "Mensual (Últimos 30 días)", "Todo el Histórico"]
+    periodo = st.selectbox("Período de análisis:", opciones, key=f"{key_prefix}_periodo")
+    filtrados = filtrar_registros_por_periodo(registros, periodo)
+    if not filtrados:
+        return filtrados, periodo
+
+    df = pd.DataFrame(filtrados)
+    opciones_vista = ["Global", "Por sucursal", "Por usuario"]
+    vista = st.selectbox("Desglosar:", opciones_vista, key=f"{key_prefix}_vista")
+    if vista == "Por sucursal":
+        sucursales = sorted([str(x) for x in df.get("Sitio / Unidad", pd.Series(dtype=str)).dropna().unique()])
+        if sucursales:
+            seleccion = st.selectbox("Sucursal:", ["Todas las sucursales"] + sucursales, key=f"{key_prefix}_sucursal")
+            if seleccion != "Todas las sucursales":
+                filtrados = [r for r in filtrados if str(r.get("Sitio / Unidad", "")) == seleccion]
+    elif vista == "Por usuario":
+        usuarios = sorted({str(r.get("Usuario") or r.get("Elaboró") or "Sin identificar") for r in filtrados})
+        seleccion = st.selectbox("Usuario:", ["Todos los usuarios"] + usuarios, key=f"{key_prefix}_usuario")
+        if seleccion != "Todos los usuarios":
+            filtrados = [r for r in filtrados if str(r.get("Usuario") or r.get("Elaboró") or "Sin identificar") == seleccion]
+    return filtrados, periodo
+
+
+# =========================================================================
+# CATÁLOGO OFICIAL CORPORATIVO (23 SUCURSALES) Y GENERADOR OFICIAL
+# =========================================================================
+CATALOGO_OFICIAL_23 = [
+    {"num": 1, "sitio": "PAMPAS INSURGENTES", "dias": "LUNES A DOMINGO", "horarios": "11:30 AM A 12:00 PM", "empleados": 5, "supervisor": "JESÚS", "tarifa": 50},
+    {"num": 2, "sitio": "PAMPAS COAPA", "dias": "LUNES A DOMINGO", "horarios": "-", "empleados": 0, "supervisor": "JESÚS", "tarifa": 50},
+    {"num": 3, "sitio": "RAMMA", "dias": "LUNES A DOMINGO", "horarios": "12:00 PM A 02:00 AM", "empleados": 2, "supervisor": "JESÚS", "tarifa": 70},
+    {"num": 4, "sitio": "SUSHITTO", "dias": "LUNES A DOMINGO", "horarios": "01:00 PM A 08:00 PM", "empleados": 1, "supervisor": "JESÚS", "tarifa": 40},
+    {"num": 5, "sitio": "CARAJILLO POLANCO", "dias": "LUNES A DOMINGO", "horarios": "01:00 PM A 01:00 AM", "empleados": 2, "supervisor": "JESÚS", "tarifa": 100},
+    {"num": 6, "sitio": "BENINGAN´S", "dias": "LUNES A DOMINGO", "horarios": "12:00 PM A 09:00 PM", "empleados": 2, "supervisor": "JESÚS", "tarifa": 40},
+    {"num": 7, "sitio": "SANATORIO DURANGO", "dias": "LUNES A DOMINGO", "horarios": "12:00 PM A 09:00 PM", "empleados": 4, "supervisor": "JESÚS", "tarifa": 100},
+    {"num": 8, "sitio": "BARRANCA", "dias": "LUNES A VIERNES", "horarios": "08:00 AM A 08:00 PM", "empleados": 2, "supervisor": "JESÚS", "tarifa": 0},
+    {"num": 9, "sitio": "VETERINARIA", "dias": "LUNES A DOMINGO", "horarios": "09:00 AM A 19:00 PM", "empleados": 1, "supervisor": "JESÚS", "tarifa": 0},
+    {"num": 10, "sitio": "ROMANCE PALACE", "dias": "VIERNES A DOMINGO", "horarios": "-", "empleados": 0, "supervisor": "JESÚS", "tarifa": 65},
+    {"num": 11, "sitio": "JUNGLA TLALPAN", "dias": "SÁBADO Y DOMINGO", "horarios": "-", "empleados": 0, "supervisor": "JESÚS", "tarifa": 100},
+    {"num": 12, "sitio": "JUNGLA DIVISIÓN", "dias": "SÁBADO Y DOMINGO", "horarios": "-", "empleados": 0, "supervisor": "JESÚS", "tarifa": 100},
+    {"num": 13, "sitio": "JUNGLA PICACHO", "dias": "SÁBADO Y DOMINGO", "horarios": "-", "empleados": 0, "supervisor": "JESÚS", "tarifa": 100},
+    {"num": 14, "sitio": "JUNGLA EMPRESA", "dias": "SÁBADO Y DOMINGO", "horarios": "-", "empleados": 0, "supervisor": "JESÚS", "tarifa": 100},
+    {"num": 15, "sitio": "SIPIRILY COAPA", "dias": "SÁBADO Y DOMINGO", "horarios": "-", "empleados": 0, "supervisor": "JESÚS", "tarifa": 80},
+    {"num": 16, "sitio": "MAROMETA SATÉLITE", "dias": "SÁBADO Y DOMINGO", "horarios": "-", "empleados": 0, "supervisor": "JESÚS", "tarifa": 70},
+    {"num": 17, "sitio": "MAROMETA MARINA", "dias": "SÁBADO Y DOMINGO", "horarios": "-", "empleados": 0, "supervisor": "JESÚS", "tarifa": 70},
+    {"num": 18, "sitio": "SUMO STA. MONICA", "dias": "LUNES A DOMINGO", "horarios": "12:30 PM A 11:00 PM", "empleados": 1, "supervisor": "VÍCTOR", "tarifa": 50},
+    {"num": 19, "sitio": "SUMO ECHEGARAY", "dias": "LUNES A DOMINGO", "horarios": "12:30 PM A 11:00 PM", "empleados": 1, "supervisor": "VÍCTOR", "tarifa": 50},
+    {"num": 20, "sitio": "RYOSHI", "dias": "LUNES A DOMINGO", "horarios": "12:00 PM A 1:00 AM", "empleados": 4, "supervisor": "VÍCTOR", "tarifa": 80},
+    {"num": 21, "sitio": "ENCANTO", "dias": "LUNES A DOMINGO", "horarios": "12:30 PM A 01 AM", "empleados": 1, "supervisor": "VÍCTOR", "tarifa": 60},
+    {"num": 22, "sitio": "E-BNI", "dias": "LUNES A DOMINGO", "horarios": "-", "empleados": 0, "supervisor": "VÍCTOR", "tarifa": 50},
+    {"num": 23, "sitio": "CHURRASQUERIA", "dias": "LUNES A DOMINGO", "horarios": "12:30 PM A 11:00 PM", "empleados": 1, "supervisor": "VÍCTOR", "tarifa": 70},
+]
+
+MESES_ESP = {1: "ENE", 2: "FEB", 3: "MAR", 4: "ABR", 5: "MAY", 6: "JUN", 7: "JUL", 8: "AGO", 9: "SEP", 10: "OCT", 11: "NOV", 12: "DIC"}
+DIAS_ESP = {0: "LUNES", 1: "MARTES", 2: "MIERCOLES", 3: "JUEVES", 4: "VIERNES", 5: "SÁBADO", 6: "DOMINGO"}
+
+def normalizar_a_sucursal_oficial(nombre):
+    if not nombre:
+        return "PAMPAS INSURGENTES"
+    n = str(nombre).strip().upper()
+    mapa = {
+        "PAMPAS INS": "PAMPAS INSURGENTES", "PAMPAS COA": "PAMPAS COAPA",
+        "PAMPAS": "PAMPAS INSURGENTES", "RAMMA": "RAMMA", "RAMA": "RAMMA",
+        "SUSHITTO": "SUSHITTO", "SUSH": "SUSHITTO",
+        "CARAJILLO": "CARAJILLO POLANCO", "CARAJ": "CARAJILLO POLANCO",
+        "BENINGANS": "BENINGAN´S", "BENINGAN´S": "BENINGAN´S", "BENI": "BENINGAN´S",
+        "SANATORIO": "SANATORIO DURANGO", "DURANGO": "SANATORIO DURANGO", "CLÍNICA": "SANATORIO DURANGO",
+        "BARRANCA": "BARRANCA", "VETERINARIA": "VETERINARIA",
+        "ROMAS": "ROMANCE PALACE", "ROMANCE": "ROMANCE PALACE",
+        "J.TLALPAN": "JUNGLA TLALPAN", "TLALPAN": "JUNGLA TLALPAN",
+        "J.DIVISION": "JUNGLA DIVISIÓN", "DIVISIÓN": "JUNGLA DIVISIÓN",
+        "J.PICACHO": "JUNGLA PICACHO", "PICACHO": "JUNGLA PICACHO",
+        "J.EMPRESA": "JUNGLA EMPRESA", "EMPRESA": "JUNGLA EMPRESA",
+        "SIPIRILY": "SIPIRILY COAPA", "SIPILY": "SIPIRILY COAPA",
+        "M SATÉLITE": "MAROMETA SATÉLITE", "SATÉLITE": "MAROMETA SATÉLITE",
+        "M MARINA": "MAROMETA MARINA", "MARINA": "MAROMETA MARINA",
+        "SUMO STA": "SUMO STA. MONICA", "MONICA": "SUMO STA. MONICA",
+        "CHEGARAY": "SUMO ECHEGARAY", "ECHEGARAY": "SUMO ECHEGARAY",
+        "RYOSHI": "RYOSHI", "RYO": "RYOSHI", "ENCANTO": "ENCANTO", "ENCANT": "ENCANTO",
+        "E-BNI": "E-BNI", "CHURRASCA": "CHURRASQUERIA", "CHURRASQUERIA": "CHURRASQUERIA"
+    }
+    for k, v in mapa.items():
+        if k in n:
+            return v
+    return n
+
+def generar_excel_formato_oficial(registros, etiqueta_periodo="SEMANAL"):
+    """Genera el libro oficial idéntico a CONTROL_FLUJO_DIARIO: hojas DETALLE, CONCENTRADO X DÍA y Rentabilidad."""
+    wb = openpyxl.Workbook()
+    ws_det = wb.active
+    ws_det.title = "DETALLE "
+    ws_conc = wb.create_sheet(title="CONCENTRADO X DÍA")
+    ws_aud = wb.create_sheet(title="Rentabilidad y Auditoría")
+
+    fill_green = PatternFill(start_color="003300", end_color="003300", fill_type="solid")
+    font_title = Font(name="Calibri", size=15, bold=True, color="003300")
+    font_subtitle = Font(name="Calibri", size=11, bold=True, color="000000")
+    font_head = Font(name="Calibri", size=8, bold=True, color="FFFFFF")
+    font_bold = Font(name="Calibri", size=8, bold=True, color="000000")
+    font_data = Font(name="Calibri", size=8, color="000000")
+    align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    align_left = Alignment(horizontal="left", vertical="center")
+    align_right = Alignment(horizontal="right", vertical="center")
+    thin_border = Border(
+        left=Side(style="thin", color="B2B2B2"),
+        right=Side(style="thin", color="B2B2B2"),
+        top=Side(style="thin", color="B2B2B2"),
+        bottom=Side(style="thin", color="B2B2B2")
+    )
+
+    fechas_dt = []
+    for r in registros:
+        f_str = r.get("Fecha")
+        if f_str:
+            for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+                try:
+                    fechas_dt.append(datetime.strptime(f_str, fmt).date())
+                    break
+                except ValueError:
+                    pass
+
+    if fechas_dt:
+        fechas_unicas = sorted(list(set(fechas_dt)))
+        if len(fechas_unicas) <= 7:
+            min_d = fechas_unicas[0]
+            lunes = min_d - timedelta(days=min_d.weekday())
+            dias_periodo = [lunes + timedelta(days=i) for i in range(7)]
+        else:
+            dias_periodo = fechas_unicas
+    else:
+        hoy = date.today()
+        lunes = hoy - timedelta(days=hoy.weekday())
+        dias_periodo = [lunes + timedelta(days=i) for i in range(7)]
+
+    txt_periodo = f"CORTE {dias_periodo[0].strftime('%d/%m/%Y')} AL {dias_periodo[-1].strftime('%d/%m/%Y')} ({etiqueta_periodo.upper()})"
+
+    matriz_reg = {}
+    for r in registros:
+        f_str = r.get("Fecha")
+        d_obj = None
+        if f_str:
+            for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+                try:
+                    d_obj = datetime.strptime(f_str, fmt).date()
+                    break
+                except ValueError:
+                    pass
+        if d_obj:
+            suc_norm = normalizar_a_sucursal_oficial(r.get("Sitio / Unidad"))
+            key = (suc_norm, d_obj)
+            matriz_reg[key] = r
+
+    # --- HOJA 1: DETALLE ---
+    ws_det["A1"] = "CLUB PARK VALET Y ESTACIONAMIENTOS, S.A. DE C.V."
+    ws_det["A1"].font = font_title
+    ws_det["A3"] = txt_periodo
+    ws_det["A3"].font = font_subtitle
+    ws_det["A5"] = "INGRESOS POR PERÍODO"
+    ws_det["A5"].font = font_subtitle
+
+    meta_headers = ["No.", "SITIO", "DÍAS QUE SE OPERA", "HORARIOS", "No. EMPLEADOS", "SUPERVISOR"]
+    for i, h in enumerate(meta_headers, start=1):
+        cell = ws_det.cell(8, i, h)
+        cell.fill = fill_green; cell.font = font_head; cell.alignment = align_center; cell.border = thin_border
+        ws_det.merge_cells(start_row=8, start_column=i, end_row=10, end_column=i)
+
+    col_idx = 7
+    dia_cols_map = {}
+    for d in dias_periodo:
+        d_str = f"{DIAS_ESP[d.weekday()]} {d.day:02d}/{MESES_ESP[d.month]}/{d.year}"
+        dia_cols_map[d] = col_idx
+        c8 = ws_det.cell(8, col_idx, d_str)
+        c8.fill = fill_green; c8.font = font_head; c8.alignment = align_center
+        ws_det.merge_cells(start_row=8, start_column=col_idx, end_row=8, end_column=col_idx+4)
+        for c in range(col_idx, col_idx+5):
+            ws_det.cell(8, c).fill = fill_green; ws_det.cell(8, c).border = thin_border
+
+        ws_det.cell(9, col_idx, "CONSECUTIVO BOLETAJE").fill = fill_green
+        ws_det.cell(9, col_idx).font = font_head; ws_det.cell(9, col_idx).alignment = align_center
+        ws_det.merge_cells(start_row=9, start_column=col_idx, end_row=9, end_column=col_idx+1)
+        ws_det.cell(9, col_idx+1).fill = fill_green
+
+        c_tb = ws_det.cell(9, col_idx+2, "TOTAL DE BOLETOS")
+        c_tb.fill = fill_green; c_tb.font = font_head; c_tb.alignment = align_center
+        ws_det.merge_cells(start_row=9, start_column=col_idx+2, end_row=10, end_column=col_idx+2)
+
+        c_cb = ws_det.cell(9, col_idx+3, "COSTO X BOLETO")
+        c_cb.fill = fill_green; c_cb.font = font_head; c_cb.alignment = align_center
+        ws_det.merge_cells(start_row=9, start_column=col_idx+3, end_row=10, end_column=col_idx+3)
+
+        c_ing = ws_det.cell(9, col_idx+4, "INGRESO POR DÍA")
+        c_ing.fill = fill_green; c_ing.font = font_head; c_ing.alignment = align_center
+        ws_det.merge_cells(start_row=9, start_column=col_idx+4, end_row=10, end_column=col_idx+4)
+
+        c_fi = ws_det.cell(10, col_idx, "FOLIO INICIAL")
+        c_fi.fill = fill_green; c_fi.font = font_head; c_fi.alignment = align_center
+        c_ff = ws_det.cell(10, col_idx+1, "FOLIO FINAL")
+        c_ff.fill = fill_green; c_ff.font = font_head; c_ff.alignment = align_center
+
+        for r_h in [9, 10]:
+            for c_h in range(col_idx, col_idx+5):
+                ws_det.cell(r_h, c_h).border = thin_border
+        col_idx += 5
+
+    col_tot_bol = col_idx
+    col_tot_ing = col_idx + 1
+    c_tbl = ws_det.cell(8, col_tot_bol, "TOTAL DE BOLETOS UTILIZADOS X PERÍODO")
+    c_tbl.fill = fill_green; c_tbl.font = font_head; c_tbl.alignment = align_center; c_tbl.border = thin_border
+    ws_det.merge_cells(start_row=8, start_column=col_tot_bol, end_row=10, end_column=col_tot_bol)
+
+    c_tin = ws_det.cell(8, col_tot_ing, "TOTAL DE INGRESOS X PERÍODO")
+    c_tin.fill = fill_green; c_tin.font = font_head; c_tin.alignment = align_center; c_tin.border = thin_border
+    ws_det.merge_cells(start_row=8, start_column=col_tot_ing, end_row=10, end_column=col_tot_ing)
+
+    r_actual = 11
+    fila_inicio_ing = r_actual
+    for item in CATALOGO_OFICIAL_23:
+        ws_det.cell(r_actual, 1, item["num"]).alignment = align_center
+        ws_det.cell(r_actual, 2, item["sitio"]).alignment = align_left
+        ws_det.cell(r_actual, 3, item["dias"]).alignment = align_left
+        ws_det.cell(r_actual, 4, item["horarios"]).alignment = align_center
+        ws_det.cell(r_actual, 5, item["empleados"]).alignment = align_center
+        ws_det.cell(r_actual, 6, item["supervisor"]).alignment = align_center
+
+        for ci in range(1, 7):
+            cell = ws_det.cell(r_actual, ci)
+            cell.font = font_data; cell.border = thin_border
+
+        tot_bol_suc = 0
+        tot_ing_suc = 0.0
+        for d in dias_periodo:
+            c_d = dia_cols_map[d]
+            rep = matriz_reg.get((item["sitio"], d))
+            if rep:
+                f_ini = rep.get("Folio Inicial", 0)
+                f_fin = rep.get("Folio Final", 0)
+                bol = rep.get("Boletos Cobrados", rep.get("Total Boletos", 0))
+                costo = rep.get("Costo Boleto", item["tarifa"])
+                ing = rep.get("Ingreso Bruto", float(bol) * float(costo))
+            else:
+                f_ini = 0; f_fin = 0; bol = 0; costo = item["tarifa"]; ing = 0.0
+
+            ws_det.cell(r_actual, c_d, f_ini).alignment = align_center
+            ws_det.cell(r_actual, c_d+1, f_fin).alignment = align_center
+            ws_det.cell(r_actual, c_d+2, bol).alignment = align_center
+            ws_det.cell(r_actual, c_d+3, costo).alignment = align_right
+            ws_det.cell(r_actual, c_d+3).number_format = "$#,##0.00"
+            ws_det.cell(r_actual, c_d+4, ing).alignment = align_right
+            ws_det.cell(r_actual, c_d+4).number_format = "$#,##0.00"
+
+            tot_bol_suc += bol
+            tot_ing_suc += ing
+
+            for c_sub in range(c_d, c_d+5):
+                cell = ws_det.cell(r_actual, c_sub)
+                cell.font = font_data; cell.border = thin_border
+
+        c_tb_cell = ws_det.cell(r_actual, col_tot_bol, tot_bol_suc)
+        c_tb_cell.alignment = align_center; c_tb_cell.font = font_bold; c_tb_cell.border = thin_border
+        c_ti_cell = ws_det.cell(r_actual, col_tot_ing, tot_ing_suc)
+        c_ti_cell.alignment = align_right; c_ti_cell.font = font_bold; c_ti_cell.border = thin_border
+        c_ti_cell.number_format = "$#,##0.00"
+        r_actual += 1
+
+    fila_fin_ing = r_actual - 1
+
+    r_tot_ing = r_actual
+    ws_det.cell(r_tot_ing, 2, "TOTAL").font = font_bold
+    ws_det.cell(r_tot_ing, 2).alignment = align_left
+    for ci in range(1, col_tot_ing + 1):
+        ws_det.cell(r_tot_ing, ci).border = thin_border
+
+    for d in dias_periodo:
+        c_d = dia_cols_map[d]
+        col_let_bol = get_column_letter(c_d+2)
+        col_let_ing = get_column_letter(c_d+4)
+        c_sb = ws_det.cell(r_tot_ing, c_d+2, f"=SUM({col_let_bol}{fila_inicio_ing}:{col_let_bol}{fila_fin_ing})")
+        c_sb.font = font_bold; c_sb.alignment = align_center
+        c_si = ws_det.cell(r_tot_ing, c_d+4, f"=SUM({col_let_ing}{fila_inicio_ing}:{col_let_ing}{fila_fin_ing})")
+        c_si.font = font_bold; c_si.alignment = align_right; c_si.number_format = "$#,##0.00"
+
+    let_tbl = get_column_letter(col_tot_bol)
+    let_tin = get_column_letter(col_tot_ing)
+    ws_det.cell(r_tot_ing, col_tot_bol, f"=SUM({let_tbl}{fila_inicio_ing}:{let_tbl}{fila_fin_ing})").font = font_bold
+    ws_det.cell(r_tot_ing, col_tot_bol).alignment = align_center
+    c_tot_ing_fin = ws_det.cell(r_tot_ing, col_tot_ing, f"=SUM({let_tin}{fila_inicio_ing}:{let_tin}{fila_fin_ing})")
+    c_tot_ing_fin.font = font_bold; c_tot_ing_fin.alignment = align_right; c_tot_ing_fin.number_format = "$#,##0.00"
+
+    # Sección Gastos
+    r_gastos_head = r_tot_ing + 3
+    ws_det.cell(r_gastos_head - 2, 1, "GASTOS POR PERÍODO").font = font_subtitle
+
+    for i, h in enumerate(meta_headers, start=1):
+        cell = ws_det.cell(r_gastos_head, i, h)
+        cell.fill = fill_green; cell.font = font_head; cell.alignment = align_center; cell.border = thin_border
+        ws_det.merge_cells(start_row=r_gastos_head, start_column=i, end_row=r_gastos_head+1, end_column=i)
+
+    for d in dias_periodo:
+        c_d = dia_cols_map[d]
+        d_str = f"{DIAS_ESP[d.weekday()]} {d.day:02d}/{MESES_ESP[d.month]}/{d.year}"
+        c_gh = ws_det.cell(r_gastos_head, c_d, d_str)
+        c_gh.fill = fill_green; c_gh.font = font_head; c_gh.alignment = align_center
+        ws_det.merge_cells(start_row=r_gastos_head, start_column=c_d, end_row=r_gastos_head, end_column=c_d+4)
+        for c in range(c_d, c_d+5):
+            ws_det.cell(r_gastos_head, c).fill = fill_green; ws_det.cell(r_gastos_head, c).border = thin_border
+
+        sub_g = ["NÓMINA LIDER DE UNIDAD", "NÓMINA OPERADOR", "GASTOS SUPERVISIÓN", "VARIOS", "TOTAL GASTOS X DÍA"]
+        for sg_i, sg_txt in enumerate(sub_g):
+            cell = ws_det.cell(r_gastos_head+1, c_d+sg_i, sg_txt)
+            cell.fill = fill_green; cell.font = font_head; cell.alignment = align_center; cell.border = thin_border
+
+    c_tg_per = ws_det.cell(r_gastos_head, col_tot_bol, "TOTAL DE GASTOS X PERÍODO")
+    c_tg_per.fill = fill_green; c_tg_per.font = font_head; c_tg_per.alignment = align_center; c_tg_per.border = thin_border
+    ws_det.merge_cells(start_row=r_gastos_head, start_column=col_tot_bol, end_row=r_gastos_head+1, end_column=col_tot_ing)
+
+    r_actual_g = r_gastos_head + 2
+    fila_inicio_gas = r_actual_g
+    for item in CATALOGO_OFICIAL_23:
+        ws_det.cell(r_actual_g, 1, item["num"]).alignment = align_center
+        ws_det.cell(r_actual_g, 2, item["sitio"]).alignment = align_left
+        ws_det.cell(r_actual_g, 3, item["dias"]).alignment = align_left
+        ws_det.cell(r_actual_g, 4, item["horarios"]).alignment = align_center
+        ws_det.cell(r_actual_g, 5, item["empleados"]).alignment = align_center
+        ws_det.cell(r_actual_g, 6, item["supervisor"]).alignment = align_center
+
+        for ci in range(1, 7):
+            cell = ws_det.cell(r_actual_g, ci)
+            cell.font = font_data; cell.border = thin_border
+
+        tot_gas_suc = 0.0
+        for d in dias_periodo:
+            c_d = dia_cols_map[d]
+            rep = matriz_reg.get((item["sitio"], d))
+            if rep:
+                nom = rep.get("Gastos Generales / Nómina", 0.0)
+                esp = rep.get("Gastos Especiales", 0.0)
+                tot_g = rep.get("Total Gastos", nom + esp)
+            else:
+                nom = 0.0; esp = 0.0; tot_g = 0.0
+
+            ws_det.cell(r_actual_g, c_d, nom).alignment = align_right
+            ws_det.cell(r_actual_g, c_d).number_format = "$#,##0.00"
+            ws_det.cell(r_actual_g, c_d+1, 0).alignment = align_right
+            ws_det.cell(r_actual_g, c_d+1).number_format = "$#,##0.00"
+            ws_det.cell(r_actual_g, c_d+2, 0).alignment = align_right
+            ws_det.cell(r_actual_g, c_d+2).number_format = "$#,##0.00"
+            ws_det.cell(r_actual_g, c_d+3, esp).alignment = align_right
+            ws_det.cell(r_actual_g, c_d+3).number_format = "$#,##0.00"
+            ws_det.cell(r_actual_g, c_d+4, tot_g).alignment = align_right
+            ws_det.cell(r_actual_g, c_d+4).number_format = "$#,##0.00"
+
+            tot_gas_suc += tot_g
+            for c_sub in range(c_d, c_d+5):
+                cell = ws_det.cell(r_actual_g, c_sub)
+                cell.font = font_data; cell.border = thin_border
+
+        c_tg_cell = ws_det.cell(r_actual_g, col_tot_bol, tot_gas_suc)
+        c_tg_cell.alignment = align_right; c_tg_cell.font = font_bold; c_tg_cell.border = thin_border
+        c_tg_cell.number_format = "$#,##0.00"
+        ws_det.merge_cells(start_row=r_actual_g, start_column=col_tot_bol, end_row=r_actual_g, end_column=col_tot_ing)
+        r_actual_g += 1
+
+    fila_fin_gas = r_actual_g - 1
+
+    r_tot_gas = r_actual_g
+    ws_det.cell(r_tot_gas, 2, "TOTAL").font = font_bold
+    for ci in range(1, col_tot_ing + 1):
+        ws_det.cell(r_tot_gas, ci).border = thin_border
+
+    for d in dias_periodo:
+        c_d = dia_cols_map[d]
+        col_let_gas = get_column_letter(c_d+4)
+        c_sg = ws_det.cell(r_tot_gas, c_d+4, f"=SUM({col_let_gas}{fila_inicio_gas}:{col_let_gas}{fila_fin_gas})")
+        c_sg.font = font_bold; c_sg.alignment = align_right; c_sg.number_format = "$#,##0.00"
+
+    ws_det.cell(r_tot_gas, col_tot_bol, f"=SUM({get_column_letter(col_tot_bol)}{fila_inicio_gas}:{get_column_letter(col_tot_bol)}{fila_fin_gas})").font = font_bold
+    ws_det.cell(r_tot_gas, col_tot_bol).alignment = align_right
+    ws_det.cell(r_tot_gas, col_tot_bol).number_format = "$#,##0.00"
+    ws_det.merge_cells(start_row=r_tot_gas, start_column=col_tot_bol, end_row=r_tot_gas, end_column=col_tot_ing)
+
+    r_util = r_tot_gas + 2
+    ws_det.cell(r_util, 2, "UTILIDAD O PÉRDIDA X DÍA").font = font_bold
+    for ci in range(1, col_tot_ing + 1):
+        ws_det.cell(r_util, ci).border = thin_border
+
+    for d in dias_periodo:
+        c_d = dia_cols_map[d]
+        let_ing = get_column_letter(c_d+4)
+        c_ut = ws_det.cell(r_util, c_d+4, f"=+{let_ing}{r_tot_ing}-{let_ing}{r_tot_gas}")
+        c_ut.font = font_bold; c_ut.alignment = align_right; c_ut.number_format = "$#,##0.00"
+
+    c_ut_tot = ws_det.cell(r_util, col_tot_bol, f"=+{get_column_letter(col_tot_ing)}{r_tot_ing}-{get_column_letter(col_tot_bol)}{r_tot_gas}")
+    c_ut_tot.font = font_bold; c_ut_tot.alignment = align_right; c_ut_tot.number_format = "$#,##0.00"
+    ws_det.merge_cells(start_row=r_util, start_column=col_tot_bol, end_row=r_util, end_column=col_tot_ing)
+
+    # --- HOJA 2: CONCENTRADO X DÍA ---
+    ws_conc["A1"] = "CLUB PARK VALET Y ESTACIONAMIENTOS, S.A. DE C.V."
+    ws_conc["A1"].font = font_title
+    ws_conc["A2"] = txt_periodo
+    ws_conc["A2"].font = font_subtitle
+    ws_conc["A3"] = "CONCENTRADO DE INGRESOS Y GASTOS"
+    ws_conc["A3"].font = font_subtitle
+
+    for i, h in enumerate(["No.", "SITIO", "SUPERVISOR"], start=1):
+        cell = ws_conc.cell(5, i, h)
+        cell.fill = fill_green; cell.font = font_head; cell.alignment = align_center; cell.border = thin_border
+        ws_conc.merge_cells(start_row=5, start_column=i, end_row=6, end_column=i)
+
+    c_col_conc = 4
+    conc_dia_cols = {}
+    for d in dias_periodo:
+        conc_dia_cols[d] = c_col_conc
+        d_str = f"{DIAS_ESP[d.weekday()]} {d.day:02d}/{MESES_ESP[d.month]}/{d.year}"
+        cell = ws_conc.cell(5, c_col_conc, d_str)
+        cell.fill = fill_green; cell.font = font_head; cell.alignment = align_center
+        ws_conc.merge_cells(start_row=5, start_column=c_col_conc, end_row=5, end_column=c_col_conc+2)
+        for c in range(c_col_conc, c_col_conc+3):
+            ws_conc.cell(5, c).fill = fill_green; ws_conc.cell(5, c).border = thin_border
+
+        for s_i, s_txt in enumerate(["TOTAL INGRESOS X DÍA", "TOTAL GASTOS X DÍA", "UTILIDAD O PÉRDIDA X DÍA"]):
+            sc = ws_conc.cell(6, c_col_conc+s_i, s_txt)
+            sc.fill = fill_green; sc.font = font_head; sc.alignment = align_center; sc.border = thin_border
+        c_col_conc += 3
+
+    col_conc_tot_ing = c_col_conc
+    col_conc_tot_gas = c_col_conc + 1
+    col_conc_tot_ut = c_col_conc + 2
+
+    c_ct = ws_conc.cell(5, col_conc_tot_ing, "CONCENTRADO DEL PERÍODO")
+    c_ct.fill = fill_green; c_ct.font = font_head; c_ct.alignment = align_center
+    ws_conc.merge_cells(start_row=5, start_column=col_conc_tot_ing, end_row=5, end_column=col_conc_tot_ut)
+    for c in range(col_conc_tot_ing, col_conc_tot_ut+1):
+        ws_conc.cell(5, c).fill = fill_green; ws_conc.cell(5, c).border = thin_border
+
+    for s_i, s_txt in enumerate(["TOTAL INGRESOS", "TOTAL GASTOS", "UTILIDAD O PÉRDIDA"]):
+        sc = ws_conc.cell(6, col_conc_tot_ing+s_i, s_txt)
+        sc.fill = fill_green; sc.font = font_head; sc.alignment = align_center; sc.border = thin_border
+
+    r_c_act = 8
+    fila_inicio_c = r_c_act
+    for i_suc, item in enumerate(CATALOGO_OFICIAL_23):
+        ws_conc.cell(r_c_act, 1, item["num"]).alignment = align_center
+        ws_conc.cell(r_c_act, 2, item["sitio"]).alignment = align_left
+        ws_conc.cell(r_c_act, 3, item["supervisor"]).alignment = align_center
+        for ci in range(1, 4):
+            ws_conc.cell(r_c_act, ci).font = font_data; ws_conc.cell(r_c_act, ci).border = thin_border
+
+        fila_det_ing = fila_inicio_ing + i_suc
+        fila_det_gas = fila_inicio_gas + i_suc
+
+        for d in dias_periodo:
+            cd_conc = conc_dia_cols[d]
+            cd_det = dia_cols_map[d]
+            let_ing = get_column_letter(cd_det+4)
+            let_gas = get_column_letter(cd_det+4)
+
+            ws_conc.cell(r_c_act, cd_conc, f"='DETALLE '!{let_ing}{fila_det_ing}").number_format = "$#,##0.00"
+            ws_conc.cell(r_c_act, cd_conc+1, f"='DETALLE '!{let_gas}{fila_det_gas}").number_format = "$#,##0.00"
+            let_ci = get_column_letter(cd_conc)
+            let_cg = get_column_letter(cd_conc+1)
+            ws_conc.cell(r_c_act, cd_conc+2, f"=+{let_ci}{r_c_act}-{let_cg}{r_c_act}").number_format = "$#,##0.00"
+
+            for sub_c in range(cd_conc, cd_conc+3):
+                cell = ws_conc.cell(r_c_act, sub_c)
+                cell.font = font_data; cell.alignment = align_right; cell.border = thin_border
+
+        let_tin_det = get_column_letter(col_tot_ing)
+        let_tga_det = get_column_letter(col_tot_bol)
+        ws_conc.cell(r_c_act, col_conc_tot_ing, f"='DETALLE '!{let_tin_det}{fila_det_ing}").number_format = "$#,##0.00"
+        ws_conc.cell(r_c_act, col_conc_tot_gas, f"='DETALLE '!{let_tga_det}{fila_det_gas}").number_format = "$#,##0.00"
+        let_ti_c = get_column_letter(col_conc_tot_ing)
+        let_tg_c = get_column_letter(col_conc_tot_gas)
+        ws_conc.cell(r_c_act, col_conc_tot_ut, f"=+{let_ti_c}{r_c_act}-{let_tg_c}{r_c_act}").number_format = "$#,##0.00"
+
+        for sub_c in range(col_conc_tot_ing, col_conc_tot_ut+1):
+            cell = ws_conc.cell(r_c_act, sub_c)
+            cell.font = font_bold; cell.alignment = align_right; cell.border = thin_border
+
+        r_c_act += 1
+
+    fila_fin_c = r_c_act - 1
+
+    r_c_tot = r_c_act
+    ws_conc.cell(r_c_tot, 1, "TOTAL").font = font_bold
+    for ci in range(1, col_conc_tot_ut + 1):
+        ws_conc.cell(r_c_tot, ci).border = thin_border
+
+    for d in dias_periodo:
+        cd_conc = conc_dia_cols[d]
+        for sub_i in range(3):
+            col_l = get_column_letter(cd_conc + sub_i)
+            c = ws_conc.cell(r_c_tot, cd_conc + sub_i, f"=SUM({col_l}{fila_inicio_c}:{col_l}{fila_fin_c})")
+            c.font = font_bold; c.alignment = align_right; c.number_format = "$#,##0.00"
+
+    for sub_i in range(3):
+        col_l = get_column_letter(col_conc_tot_ing + sub_i)
+        c = ws_conc.cell(r_c_tot, col_conc_tot_ing + sub_i, f"=SUM({col_l}{fila_inicio_c}:{col_l}{fila_fin_c})")
+        c.font = font_bold; c.alignment = align_right; c.number_format = "$#,##0.00"
+
+    # --- HOJA 3: Rentabilidad y Auditoría ---
+    ws_aud["A1"] = "ANÁLISIS DE RENTABILIDAD Y AUDITORÍA INTELIGENTE"
+    ws_aud["A1"].font = font_title
+    headers_aud = ["ID", "Fecha", "Sitio / Unidad", "Supervisor", "Boletos Cobrados", "Tarifa", "Ingreso Bruto", "Total Gastos", "Ingreso Neto", "Margen (%)", "Estado Auditoría"]
+    for c_i, h in enumerate(headers_aud, start=1):
+        cell = ws_aud.cell(3, c_i, h)
+        cell.fill = fill_green; cell.font = font_head; cell.alignment = align_center; cell.border = thin_border
+
+    r_aud = 4
+    for r in registros:
+        bruto = float(r.get("Ingreso Bruto", 0.0))
+        neto = float(r.get("Ingreso Neto", 0.0))
+        margen = (neto / bruto * 100) if bruto > 0 else 0.0
+        ws_aud.cell(r_aud, 1, r.get("ID", "")).alignment = align_center
+        ws_aud.cell(r_aud, 2, r.get("Fecha", "")).alignment = align_center
+        ws_aud.cell(r_aud, 3, r.get("Sitio / Unidad", "")).alignment = align_left
+        ws_aud.cell(r_aud, 4, r.get("Elaboró", r.get("Usuario", ""))).alignment = align_center
+        ws_aud.cell(r_aud, 5, r.get("Boletos Cobrados", 0)).alignment = align_center
+        ws_aud.cell(r_aud, 6, r.get("Costo Boleto", 0)).number_format = "$#,##0.00"
+        ws_aud.cell(r_aud, 7, bruto).number_format = "$#,##0.00"
+        ws_aud.cell(r_aud, 8, float(r.get("Total Gastos", 0.0))).number_format = "$#,##0.00"
+        ws_aud.cell(r_aud, 9, neto).number_format = "$#,##0.00"
+        ws_aud.cell(r_aud, 10, f"{margen:.1f}%").alignment = align_center
+        ws_aud.cell(r_aud, 11, r.get("Nivel Auditoría", "Conforme")).alignment = align_center
+        for ci in range(1, 12):
+            ws_aud.cell(r_aud, ci).font = font_data; ws_aud.cell(r_aud, ci).border = thin_border
+        r_aud += 1
+
+    # Presentación corporativa: impresión horizontal, títulos legibles y encabezados congelados.
+    for ws in (ws_det, ws_conc, ws_aud):
+        ws.sheet_view.showGridLines = False
+        ws.freeze_panes = "G11" if ws is ws_det else ("D8" if ws is ws_conc else "A4")
+        ws.page_setup.orientation = "landscape"
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 0
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.sheet_properties.pageSetUpPr.autoPageBreaks = False
+        ws.sheet_format.defaultRowHeight = 16
+    for col, width in {"A": 7, "B": 26, "C": 20, "D": 21, "E": 13, "F": 16}.items():
+        ws_det.column_dimensions[col].width = width
+    for c in range(7, col_tot_ing + 1):
+        ws_det.column_dimensions[get_column_letter(c)].width = 14
+    for col, width in {"A": 7, "B": 28, "C": 16}.items():
+        ws_conc.column_dimensions[col].width = width
+    for c in range(4, col_conc_tot_ut + 1):
+        ws_conc.column_dimensions[get_column_letter(c)].width = 18
+    for col, width in {"A": 14, "B": 13, "C": 25, "D": 21, "E": 16, "F": 13, "G": 16, "H": 16, "I": 16, "J": 12, "K": 23}.items():
+        ws_aud.column_dimensions[col].width = width
+
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
+def generar_csv_oficial(registros, etiqueta_periodo="SEMANAL"):
+    """Genera CSV con el esquema oficial corporativo de corte diario por sucursal y supervisor."""
+    if not registros:
+        return "No hay registros disponibles para el período seleccionado.\n".encode("utf-8-sig")
+    
+    filas = []
+    for r in registros:
+        suc = normalizar_a_sucursal_oficial(r.get("Sitio / Unidad", ""))
+        info_cat = next((item for item in CATALOGO_OFICIAL_23 if item["sitio"] == suc), None)
+        dias_op = info_cat["dias"] if info_cat else "-"
+        horarios = info_cat["horarios"] if info_cat else "-"
+        empleados = info_cat["empleados"] if info_cat else 0
+        sup_cat = info_cat["supervisor"] if info_cat else (r.get("Elaboró") or r.get("Usuario") or "JESÚS")
+        
+        bruto = float(r.get("Ingreso Bruto", 0.0))
+        nom = float(r.get("Gastos Generales / Nómina", 0.0))
+        esp = float(r.get("Gastos Especiales", 0.0))
+        tot_g = float(r.get("Total Gastos", nom + esp))
+        neto = float(r.get("Ingreso Neto", bruto - tot_g))
+        
+        filas.append({
+            "No.": info_cat["num"] if info_cat else "",
+            "SITIO": suc,
+            "DÍAS QUE SE OPERA": dias_op,
+            "HORARIOS": horarios,
+            "No. EMPLEADOS": empleados,
+            "SUPERVISOR": sup_cat,
+            "FECHA": r.get("Fecha", ""),
+            "FOLIO INICIAL": r.get("Folio Inicial", 0),
+            "FOLIO FINAL": r.get("Folio Final", 0),
+            "TOTAL BOLETOS": r.get("Boletos Cobrados", r.get("Total Boletos", 0)),
+            "COSTO X BOLETO": r.get("Costo Boleto", info_cat["tarifa"] if info_cat else 0),
+            "INGRESO X DÍA": bruto,
+            "NÓMINA LIDER": nom,
+            "NÓMINA OPERADOR": 0.0,
+            "GASTOS SUPERVISIÓN": 0.0,
+            "VARIOS": esp,
+            "TOTAL GASTOS X DÍA": tot_g,
+            "UTILIDAD O PÉRDIDA X DÍA": neto,
+            "ESTADO AUDITORÍA": r.get("Nivel Auditoría", "Conforme"),
+            "USUARIO REGISTRO": r.get("Usuario") or r.get("Elaboró") or sup_cat
+        })
+    df_csv = pd.DataFrame(filas)
+    return df_csv.to_csv(index=False).encode("utf-8-sig")
+
+def generar_excel_completo(registros, historial_auditoria=None, etiqueta_periodo="SEMANAL"):
+    """Generador corporativo oficial: si openpyxl está disponible genera el formato exacto de dos hojas oficiales."""
     if not registros:
         return None, "NO_REGISTROS"
     if not OPENPYXL_OK and not XLSXWRITER_OK:
         return None, "SIN_MOTOR"
     try:
-        df = pd.DataFrame(registros)
-        df["Fecha_DT"] = pd.to_datetime(df.get("Fecha"), format="%d/%m/%Y", errors="coerce")
-        df = df.sort_values(by="Fecha_DT", ascending=False)
-        df["Año"] = df["Fecha_DT"].dt.year
-        df["Semana"] = df["Fecha_DT"].dt.isocalendar().week
-        df["Semana_Etiqueta"] = df["Año"].astype(str) + " - Sem " + df["Semana"].astype(str)
-        df["Mes_Etiqueta"] = df["Fecha_DT"].dt.strftime("%Y-%m (%B)")
-
-        if "Sitio / Unidad" not in df.columns:
-            df["Sitio / Unidad"] = "GENERAL"
-        if "ID" not in df.columns:
-            df["ID"] = [f"REP_{i+1}" for i in range(len(df))]
-        cols_num = ["Ingreso Bruto", "Gastos Especiales", "Gastos Generales / Nómina", "Total Gastos", "Ingreso Neto", "Boletos Cobrados"]
-        for c in cols_num:
-            if c not in df.columns:
-                df[c] = 0.0
-            else:
-                df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
-
-        output = io.BytesIO()
-        engine = "openpyxl" if OPENPYXL_OK else "xlsxwriter"
-
-        with pd.ExcelWriter(output, engine=engine) as writer:
-            # 1. Pestaña: Rentabilidad por Sucursal (EJE PRINCIPAL)
-            resumen_suc = df.groupby("Sitio / Unidad").agg({
-                "ID": "count",
-                "Boletos Cobrados": "sum",
-                "Ingreso Bruto": "sum",
-                "Total Gastos": "sum",
-                "Ingreso Neto": "sum"
-            }).reset_index()
-            resumen_suc.rename(columns={"ID": "Reportes Registrados"}, inplace=True)
-            resumen_suc["Margen (%)"] = ((resumen_suc["Ingreso Neto"] / resumen_suc["Ingreso Bruto"]) * 100).fillna(0.0).round(2)
-            resumen_suc["Rentabilidad"] = resumen_suc["Margen (%)"].apply(evaluar_rentabilidad)
-            resumen_suc = resumen_suc.sort_values(by="Ingreso Neto", ascending=False)
-            resumen_suc.to_excel(writer, sheet_name="Rentabilidad por Sucursal", index=False)
-
-            # 2. Pestaña: Resumen Semanal
-            resumen_sem = df.groupby(["Semana_Etiqueta", "Sitio / Unidad"]).agg({
-                "Boletos Cobrados": "sum",
-                "Ingreso Bruto": "sum",
-                "Total Gastos": "sum",
-                "Ingreso Neto": "sum"
-            }).reset_index()
-            resumen_sem["Margen (%)"] = ((resumen_sem["Ingreso Neto"] / resumen_sem["Ingreso Bruto"]) * 100).fillna(0.0).round(2)
-            resumen_sem["Rentabilidad"] = resumen_sem["Margen (%)"].apply(evaluar_rentabilidad)
-            resumen_sem.to_excel(writer, sheet_name="Resumen Semanal", index=False)
-
-            # 3. Pestaña: Detalle Completo de Reportes
-            cols_detalle = [
-                "ID", "Fecha", "Sitio / Unidad", "Horario", "Tipo", "Costo Boleto",
-                "Folio Inicial", "Folio Final", "Total Boletos", "Sin Cobro", "Cancelados", "Perdidos",
-                "Boletos Cobrados", "Ingreso Bruto", "Gastos Especiales", "Gastos Generales / Nómina",
-                "Total Gastos", "Ingreso Neto", "Margen (%)", "Rentabilidad", "Score Auditoría", "Elaboró", "Recibe", "Tiene Foto"
-            ]
-            df["Tiene Foto"] = df.get("foto_path", pd.Series()).apply(lambda x: "SÍ" if (x and os.path.exists(str(x))) else "NO")
-            cols_pres = [c for c in cols_detalle if c in df.columns]
-            df[cols_pres].to_excel(writer, sheet_name="Detalle Reportes", index=False)
-
-            # 4. Pestaña: Bitácora de Auditoría
-            if historial_auditoria:
-                df_aud = pd.DataFrame(historial_auditoria)
-                if not df_aud.empty:
-                    df_aud.to_excel(writer, sheet_name="Historial de Auditoría", index=False)
-
-        # Estilos corporativos si openpyxl está disponible
         if OPENPYXL_OK:
-            try:
-                output.seek(0)
-                wb = openpyxl.load_workbook(output)
-                header_fill = PatternFill(start_color="1A365D", end_color="1A365D", fill_type="solid")
-                header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-                border_thin = Border(
-                    left=Side(style='thin', color='E2E8F0'),
-                    right=Side(style='thin', color='E2E8F0'),
-                    top=Side(style='thin', color='E2E8F0'),
-                    bottom=Side(style='thin', color='E2E8F0')
-                )
-
-                for ws in wb.worksheets:
-                    for col_idx in range(1, ws.max_column + 1):
-                        c = ws.cell(row=1, column=col_idx)
-                        c.fill = header_fill
-                        c.font = header_font
-                        c.alignment = Alignment(horizontal="center", vertical="center")
-
-                    for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=1, max_col=ws.max_column):
-                        for c in row:
-                            c.border = border_thin
-                            header_val = str(ws.cell(row=1, column=c.column).value or "")
-                            if any(k in header_val for k in ["Ingreso", "Gasto", "Neto", "Costo", "Tarifa"]):
-                                c.number_format = '"$"#,##0.00'
-                            elif "Margen" in header_val:
-                                c.number_format = '0.0"%"'
-                            elif any(k in header_val for k in ["Boleto", "Folio", "Reporte"]):
-                                c.number_format = '#,##0'
-
-                    for col in ws.columns:
-                        max_len = max(len(str(cell.value or '')) for cell in col)
-                        col_letter = get_column_letter(col[0].column)
-                        ws.column_dimensions[col_letter].width = max(max_len + 3, 13)
-
-                out_styled = io.BytesIO()
-                wb.save(out_styled)
-                out_styled.seek(0)
-                return out_styled.getvalue(), "OK"
-            except Exception:
-                output.seek(0)
-                return output.getvalue(), "OK"
-
-        output.seek(0)
+            datos_bytes = generar_excel_formato_oficial(registros, etiqueta_periodo)
+            return datos_bytes, "OK"
+        
+        # Respaldo en xlsxwriter si no estuviera openpyxl
+        output = io.BytesIO()
+        df = pd.DataFrame(registros)
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            df.to_excel(writer, sheet_name="Detalle de Reportes", index=False)
         return output.getvalue(), "OK"
     except Exception as e:
-        return None, str(e)
+        return None, f"ERROR_EXCEL: {str(e)}"
+
 
 # =========================================================================
 # SUITE DE PRUEBAS DE REGRESIÓN TÉCNICA Y DIAGNÓSTICO
@@ -1285,21 +1784,24 @@ if st.session_state.registros:
     
     if reps_descarga:
         historial_aud_sidebar = cargar_historial_auditoria()
-        excel_data, estado_excel = generar_excel_completo(reps_descarga, historial_aud_sidebar)
+        excel_data, estado_excel = generar_excel_completo(reps_descarga, historial_aud_sidebar, etiqueta_periodo=periodo_sel)
         if estado_excel == "OK" and excel_data:
             st.sidebar.download_button(
-                label=f"📊 Descargar Excel ({periodo_sel.split(' ')[0]})",
+                label=f"📊 Descargar Excel Oficial ({periodo_sel.split(' ')[0]})",
                 data=excel_data,
-                file_name=f"ClubPark_Balance_{tag_periodo}_{ts_descarga}.xlsx",
+                file_name=f"ClubPark_Control_Oficial_{tag_periodo}_{ts_descarga}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
+        elif estado_excel == "SIN_MOTOR":
+            st.sidebar.error("No está disponible ningún motor para generar Excel. Descarga el CSV oficial.")
+        else:
+            st.sidebar.error(f"No se pudo generar el Excel: {estado_excel}")
         
-        df_csv_p = pd.DataFrame(reps_descarga)
         st.sidebar.download_button(
-            label=f"📄 Descargar Respaldo CSV ({periodo_sel.split(' ')[0]})",
-            data=df_csv_p.to_csv(index=False).encode("utf-8-sig"),
-            file_name=f"ClubPark_Respaldo_CSV_{tag_periodo}_{ts_descarga}.csv",
+            label=f"📄 Descargar CSV Oficial ({periodo_sel.split(' ')[0]})",
+            data=generar_csv_oficial(reps_descarga, etiqueta_periodo=periodo_sel),
+            file_name=f"ClubPark_Control_Oficial_{tag_periodo}_{ts_descarga}.csv",
             mime="text/csv",
             use_container_width=True
         )
@@ -1709,12 +2211,15 @@ with tab2:
     subtab_rent1, subtab_rent2 = st.tabs(["📊 Rentabilidad Financiera Real", "🧠 Tendencias de Aprendizaje IA"])
     
     with subtab_rent1:
-        st.markdown("Monitoreo en tiempo real de ingresos brutos, gastos de operación, nómina y margen neto de cada unidad de negocio.")
+        st.markdown("Monitoreo de ingresos brutos, gastos de operación, nómina y margen neto; selecciona período y alcance.")
+        registros_rentabilidad, periodo_rentabilidad = mostrar_filtro_periodo_registros(
+            st.session_state.registros, "rentabilidad_comun"
+        )
     
-        if not st.session_state.registros:
+        if not registros_rentabilidad:
             st.info("No hay datos suficientes para calcular rentabilidad. Registra el primer reporte.")
         else:
-            df_r = pd.DataFrame(st.session_state.registros)
+            df_r = pd.DataFrame(registros_rentabilidad)
             cols_n = ["Ingreso Bruto", "Gastos Especiales", "Gastos Generales / Nómina", "Total Gastos", "Ingreso Neto", "Boletos Cobrados"]
             for c in cols_n:
                 if c not in df_r.columns:
@@ -1806,13 +2311,41 @@ with tab2:
 
         with subtab_rent2:
             st.markdown("### 🧠 Tendencias de Comportamiento Aprendidas por la IA")
-            st.markdown("El motor adaptativo analiza continuamente los reportes para aprender el comportamiento regular de boletos, ingresos, gastos y folios por sucursal.")
-            
+            st.markdown("El perfil de aprendizaje es acumulativo; los resultados visibles se filtran por el período y alcance elegido.")
+            registros_tendencias, periodo_tendencias = mostrar_filtro_periodo_registros(
+                st.session_state.registros, "tendencias_ia"
+            )
+            df_tendencias = pd.DataFrame(registros_tendencias) if registros_tendencias else pd.DataFrame()
             memoria_ia_view = cargar_memoria_ia()
             sucursales_dict = memoria_ia_view.get("sucursales", {})
             
-            tot_aprendidos = memoria_ia_view.get("total_reportes_procesados", 0)
-            suc_activas = len([s for s, d in sucursales_dict.items() if d.get("reportes_aprendidos", 0) > 0])
+            # Período/alcance: métricas calculadas únicamente a partir de los reportes seleccionados.
+            if not df_tendencias.empty:
+                for col in ["Boletos Cobrados", "Ingreso Bruto", "Total Gastos", "Ingreso Neto"]:
+                    if col not in df_tendencias.columns:
+                        df_tendencias[col] = 0.0
+                    df_tendencias[col] = pd.to_numeric(df_tendencias[col], errors="coerce").fillna(0.0)
+                df_tendencias["Margen (%)"] = df_tendencias.apply(
+                    lambda row: (row["Ingreso Neto"] / row["Ingreso Bruto"] * 100) if row["Ingreso Bruto"] > 0 else 0.0,
+                    axis=1
+                )
+                grupos_tendencias = df_tendencias.groupby("Sitio / Unidad", dropna=False)
+                perfiles_periodo = {}
+                for suc, grupo in grupos_tendencias:
+                    perfiles_periodo[str(suc)] = {
+                        "reportes_aprendidos": int(len(grupo)),
+                        "promedio_boletos": float(grupo["Boletos Cobrados"].mean()),
+                        "promedio_ingreso_bruto": float(grupo["Ingreso Bruto"].mean()),
+                        "promedio_gastos": float(grupo["Total Gastos"].mean()),
+                        "margen_promedio": float(grupo["Margen (%)"].mean())
+                    }
+                sucursales_dict = perfiles_periodo
+                tot_aprendidos = int(len(df_tendencias))
+                suc_activas = len(sucursales_dict)
+            else:
+                sucursales_dict = {}
+                tot_aprendidos = 0
+                suc_activas = 0
             
             k_ia1, k_ia2, k_ia3, k_ia4 = st.columns(4)
             with k_ia1:
@@ -1964,9 +2497,20 @@ if es_contador:
 else:
     with tab3:
         st.markdown("### 📋 Mis Reportes Operativos")
-        mis_reportes = [r for r in st.session_state.registros if r.get("Elaboró") == st.session_state.usuario_autenticado]
+        mis_reportes = [r for r in st.session_state.registros if (r.get("Usuario") or r.get("Elaboró")) == st.session_state.usuario_autenticado]
         if mis_reportes:
-            st.dataframe(pd.DataFrame(mis_reportes)[["ID", "Fecha", "Sitio / Unidad", "Boletos Cobrados", "Ingreso Bruto", "Total Gastos", "Ingreso Neto", "Margen (%)"]], use_container_width=True)
+            periodo_mis = st.selectbox("Período de mis reportes:", ["Semanal (Últimos 7 días)", "Quincenal (Últimos 15 días)", "Mensual (Últimos 30 días)", "Todo el Histórico"], key="supervisor_mis_periodo")
+            mis_reportes_periodo = filtrar_registros_por_periodo(mis_reportes, periodo_mis)
+            suc_mis = sorted({str(r.get("Sitio / Unidad", "")) for r in mis_reportes_periodo})
+            suc_selec_mis = st.selectbox("Sucursal:", ["Todas las sucursales"] + suc_mis, key="supervisor_mis_sucursal")
+            if suc_selec_mis != "Todas las sucursales":
+                mis_reportes_periodo = [r for r in mis_reportes_periodo if str(r.get("Sitio / Unidad", "")) == suc_selec_mis]
+            if mis_reportes_periodo:
+                df_mis = pd.DataFrame(mis_reportes_periodo)
+                columnas_mis = [c for c in ["ID", "Fecha", "Sitio / Unidad", "Boletos Cobrados", "Ingreso Bruto", "Total Gastos", "Ingreso Neto", "Margen (%)"] if c in df_mis.columns]
+                st.dataframe(df_mis[columnas_mis], use_container_width=True, hide_index=True)
+            else:
+                st.info("No hay reportes en el período/sucursal seleccionados.")
         else:
             st.info("Aún no has registrado reportes bajo tu usuario.")
 
@@ -2239,13 +2783,17 @@ Favor de coordinar la operación con 2 horas de anticipación."""
         st.markdown("### 🗂️ Gestión, Edición y Eliminación de Reportes")
         st.caption("Reportes organizados por la cuenta que los registró. Los reportes históricos sin ese dato se agrupan según el campo ‘Elaboró’; confirma autoría antes de atribuirlos.")
         if st.session_state.registros:
+            registros_gestion, periodo_gestion = mostrar_filtro_periodo_registros(
+                st.session_state.registros, "gestion_reportes"
+            )
+            st.caption(f"Mostrando {len(registros_gestion)} reportes · {periodo_gestion}.")
             grupos = {
                 "Víctor Manuel": [],
                 "José de Jesús": [],
                 "Víctor (Contador)": [],
                 "Sin usuario identificable": []
             }
-            for r in st.session_state.registros:
+            for r in registros_gestion:
                 owner = r.get("Usuario") or r.get("Elaboró")
                 if owner in ("Víctor Manuel", "José de Jesús", "Víctor (Contador)"):
                     grupos[owner].append(r)
@@ -2274,46 +2822,47 @@ Favor de coordinar la operación con 2 horas de anticipación."""
                 for r in lista:
                     etiqueta = f"{nombre} | {r.get('ID')} | {r.get('Fecha')} | {r.get('Sitio / Unidad')} | Neto: ${r.get('Ingreso Neto', 0):,.2f}"
                     opciones_rep.append(etiqueta)
-                    indice_por_etiqueta[etiqueta] = st.session_state.registros.index(r)
-            sel_rep = st.selectbox("Selecciona reporte para revisar, auditar o eliminar:", opciones_rep, key="sel_rep_gest")
-            idx_rep = indice_por_etiqueta[sel_rep]
-            rep_data = st.session_state.registros[idx_rep]
+                    indice_por_etiqueta[etiqueta] = next((i for i, original in enumerate(st.session_state.registros) if original.get("ID") == r.get("ID")), 0)
+            if opciones_rep:
+                sel_rep = st.selectbox("Selecciona reporte para revisar, auditar o eliminar:", opciones_rep, key="sel_rep_gest")
+                idx_rep = indice_por_etiqueta[sel_rep]
+                rep_data = st.session_state.registros[idx_rep]
 
-            c_g1, c_g2 = st.columns([2, 1])
-            with c_g1:
-                st.json(rep_data)
-            with c_g2:
-                foto_p = rep_data.get("foto_path")
-                if foto_p and os.path.exists(foto_p):
-                    st.image(foto_p, caption="Fotografía vinculada", use_container_width=True)
-                else:
-                    st.caption("📷 Sin fotografía física vinculada.")
+                c_g1, c_g2 = st.columns([2, 1])
+                with c_g1:
+                    st.json(rep_data)
+                with c_g2:
+                    foto_p = rep_data.get("foto_path")
+                    if foto_p and os.path.exists(foto_p):
+                        st.image(foto_p, caption="Fotografía vinculada", use_container_width=True)
+                    else:
+                        st.caption("📷 Sin fotografía física vinculada.")
 
-            if st.button("✅ Registrar revisión de auditoría", key="btn_review_r_aud", use_container_width=True):
-                audit_score, audit_level, audit_fallas, audit_obs = evaluar_auditoria_reporte(rep_data, st.session_state.registros, memoria_ia_global)
-                registrar_evento_auditoria(
-                    "Aprobación de Auditoría" if not audit_fallas else "Revisión de Auditoría",
-                    st.session_state.usuario_autenticado,
-                    rep_data.get("ID"), rep_data.get("Sitio / Unidad"), rep_data.get("Fecha"),
-                    f"Revisión manual solicitada. Resultado: {audit_level}; {len(audit_fallas)} hallazgo(s).",
-                    score=audit_score,
-                    fallas=audit_fallas
-                )
-                st.success(f"Revisión registrada: {audit_level}. Consulta la bitácora para el detalle.")
+                if st.button("✅ Registrar revisión de auditoría", key="btn_review_r_aud", use_container_width=True):
+                    audit_score, audit_level, audit_fallas, audit_obs = evaluar_auditoria_reporte(rep_data, st.session_state.registros, memoria_ia_global)
+                    registrar_evento_auditoria(
+                        "Aprobación de Auditoría" if not audit_fallas else "Revisión de Auditoría",
+                        st.session_state.usuario_autenticado,
+                        rep_data.get("ID"), rep_data.get("Sitio / Unidad"), rep_data.get("Fecha"),
+                        f"Revisión manual solicitada. Resultado: {audit_level}; {len(audit_fallas)} hallazgo(s).",
+                        score=audit_score,
+                        fallas=audit_fallas
+                    )
+                    st.success(f"Revisión registrada: {audit_level}. Consulta la bitácora para el detalle.")
 
-            if st.button("🗑️ Eliminar Reporte y Archivo Adjunto", key="btn_del_r_aud", type="primary"):
-                if foto_p and os.path.exists(foto_p):
-                    try:
-                        os.remove(foto_p)
-                    except Exception:
-                        pass
-                eliminado = st.session_state.registros.pop(idx_rep)
-                guardar_registros_permanentes(st.session_state.registros)
-                registrar_evento_auditoria("Eliminación", st.session_state.usuario_autenticado, eliminado.get("ID"), eliminado.get("Sitio / Unidad"), eliminado.get("Fecha"), "Reporte eliminado por el Auditor.")
-                st.success("✅ Reporte eliminado del sistema.")
-                st.rerun()
+                if st.button("🗑️ Eliminar Reporte y Archivo Adjunto", key="btn_del_r_aud", type="primary"):
+                    if foto_p and os.path.exists(foto_p):
+                        try:
+                            os.remove(foto_p)
+                        except Exception:
+                            pass
+                    eliminado = st.session_state.registros.pop(idx_rep)
+                    guardar_registros_permanentes(st.session_state.registros)
+                    registrar_evento_auditoria("Eliminación", st.session_state.usuario_autenticado, eliminado.get("ID"), eliminado.get("Sitio / Unidad"), eliminado.get("Fecha"), "Reporte eliminado por el Auditor.")
+                    st.success("✅ Reporte eliminado del sistema.")
+                    st.rerun()
         else:
-            st.info("No hay reportes para gestionar.")
+            st.info("No hay reportes para gestionar en el período seleccionado.")
 
         # ZONA DE AUDITORÍA: REINICIO TOTAL DEL SISTEMA DESDE CERO
         st.markdown("---")
@@ -2390,4 +2939,3 @@ if not es_contador:
                         st.info(f"📍 **{ev.get('Sitio / Unidad')}** | Fecha: **{ev.get('Fecha')}** ({ev.get('Horario')}) | Responsable: **{ev.get('Supervisor Asignado', ev.get('Elaboró'))}**")
         else:
             st.caption("No hay eventos programados en este momento.")
-  
