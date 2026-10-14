@@ -6,6 +6,7 @@ Sistema Inteligente de Control Operativo, Auditoría Automatizada y Rentabilidad
 Optimizado para dispositivos Android con bajo consumo de datos móviles (Cero costo de APIs externas).
 """
 
+import math
 import io
 import json
 import os
