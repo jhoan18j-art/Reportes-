@@ -66,6 +66,146 @@ AUDIT_FILE = os.path.join(DATA_DIR, "historial_auditoria.json")
 AI_MEMORIA_FILE = os.path.join(DATA_DIR, "ia_memoria_aprendizaje.json")
 FOTOS_DIR = os.path.join(DATA_DIR, "fotos_reportes")
 os.makedirs(FOTOS_DIR, exist_ok=True)
+CONFIG_FILE = os.path.join(DATA_DIR, "config_operativa.json")
+NOTIF_LOG_FILE = os.path.join(DATA_DIR, "bitacora_notificaciones.json")
+
+def cargar_config_operativa():
+    default_cfg = {
+        "tel_jesus": "525500000001",
+        "tel_victor": "525500000002",
+        "lovable_api_key": "",
+        "whatsapp_api_key": "",
+        "auto_whatsapp": False
+    }
+    return cargar_json_seguro(CONFIG_FILE, default_cfg)
+
+def guardar_config_operativa(cfg):
+    guardar_json_atomico(CONFIG_FILE, cfg)
+
+def registrar_notificacion_bitacora(destinatario, tipo, mensaje, estado, detalle=""):
+    bitacora = cargar_json_seguro(NOTIF_LOG_FILE, [])
+    item = {
+        "id": f"NOTIF_{uuid.uuid4().hex[:6]}",
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "destinatario": destinatario,
+        "tipo": tipo,
+        "mensaje": mensaje,
+        "estado": estado,
+        "detalle": detalle
+    }
+    bitacora.insert(0, item)
+    if len(bitacora) > 100:
+        bitacora = bitacora[:100]
+    guardar_json_atomico(NOTIF_LOG_FILE, bitacora)
+    return item
+
+def enviar_whatsapp_directo_api(telefono: str, mensaje: str, lovable_key=None, whatsapp_key=None):
+    """
+    Envía mensaje directo por WhatsApp Business Gateway API (si las credenciales existen).
+    Retorna (exito: bool, respuesta: str)
+    """
+    l_key = lovable_key or obtener_secreto("LOVABLE_API_KEY", os.environ.get("LOVABLE_API_KEY", ""))
+    w_key = whatsapp_key or obtener_secreto("WHATSAPP_API_KEY", os.environ.get("WHATSAPP_API_KEY", ""))
+    if not l_key or not w_key:
+        return False, "Credenciales API no configuradas (se requiere LOVABLE_API_KEY y WHATSAPP_API_KEY)"
+    
+    tel_digits = "".join(ch for ch in str(telefono) if ch.isdigit())
+    if not tel_digits.startswith("52") and len(tel_digits) == 10:
+        tel_digits = "52" + tel_digits
+        
+    url = "https://connector-gateway.lovable.dev/whatsapp/messages"
+    headers = {
+        "Authorization": f"Bearer {l_key}",
+        "X-Connection-Api-Key": w_key,
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": tel_digits,
+        "type": "text",
+        "text": {"body": mensaje}
+    }
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=10)
+        if resp.status_code in (200, 201):
+            return True, "Enviado exitosamente vía WhatsApp API"
+        else:
+            return False, f"Error Gateway ({resp.status_code}): {resp.text}"
+    except Exception as e:
+        return False, f"Falla de conexión: {str(e)}"
+
+def filtrar_registros_por_periodo(registros, tipo_periodo="Todo el Histórico", fecha_ini=None, fecha_fin=None):
+    if not registros or tipo_periodo == "Todo el Histórico":
+        return list(registros)
+    hoy = date.today()
+    if "Semanal" in tipo_periodo:
+        lim_inf = hoy - timedelta(days=7)
+        lim_sup = hoy + timedelta(days=1)
+    elif "Quincenal" in tipo_periodo:
+        lim_inf = hoy - timedelta(days=15)
+        lim_sup = hoy + timedelta(days=1)
+    elif "Mensual" in tipo_periodo:
+        lim_inf = hoy - timedelta(days=30)
+        lim_sup = hoy + timedelta(days=1)
+    elif tipo_periodo == "Rango Personalizado" and fecha_ini and fecha_fin:
+        lim_inf = fecha_ini
+        lim_sup = fecha_fin
+    else:
+        return list(registros)
+    
+    resultado = []
+    for r in registros:
+        f_str = r.get("Fecha", "")
+        try:
+            f_dt = datetime.strptime(f_str, "%d/%m/%Y").date()
+            if lim_inf <= f_dt <= lim_sup:
+                resultado.append(r)
+        except Exception:
+            pass
+    return resultado
+
+def reiniciar_sistema_desde_cero(borrar_reportes=True, borrar_fotos=True, reiniciar_memoria=False, reiniciar_bitacora=False, usuario_auditor="Víctor (Contador)"):
+    total_fotos_borradas = 0
+    total_reportes_borrados = 0
+
+    if borrar_fotos and os.path.exists(FOTOS_DIR):
+        for arch in os.listdir(FOTOS_DIR):
+            ruta_f = os.path.join(FOTOS_DIR, arch)
+            try:
+                if os.path.isfile(ruta_f):
+                    os.remove(ruta_f)
+                    total_fotos_borradas += 1
+            except Exception:
+                pass
+
+    if borrar_reportes:
+        regs = cargar_registros_guardados()
+        total_reportes_borrados = len(regs)
+        guardar_registros_permanentes([])
+        if "registros" in st.session_state:
+            st.session_state.registros = []
+
+    if reiniciar_memoria:
+        guardar_json_atomico(AI_MEMORIA_FILE, {
+            "version": "2.0_adaptive",
+            "total_reportes_procesados": 0,
+            "sucursales": {}
+        })
+
+    if reiniciar_bitacora:
+        guardar_json_atomico(AUDIT_FILE, [])
+    else:
+        registrar_evento_auditoria(
+            "Reinicio Total del Sistema",
+            usuario_auditor,
+            "RESET_SISTEMA",
+            "TODAS",
+            datetime.now().strftime("%d/%m/%Y"),
+            f"El auditor reinició el sistema desde cero. Se borraron {total_reportes_borrados} reportes y {total_fotos_borradas} fotos físicas.",
+            score=100
+        )
+
+    return total_reportes_borrados, total_fotos_borradas
 
 SUPABASE_OK = False
 try:
@@ -816,9 +956,16 @@ def generar_excel_completo(registros, historial_auditoria=None):
         df["Semana_Etiqueta"] = df["Año"].astype(str) + " - Sem " + df["Semana"].astype(str)
         df["Mes_Etiqueta"] = df["Fecha_DT"].dt.strftime("%Y-%m (%B)")
 
+        if "Sitio / Unidad" not in df.columns:
+            df["Sitio / Unidad"] = "GENERAL"
+        if "ID" not in df.columns:
+            df["ID"] = [f"REP_{i+1}" for i in range(len(df))]
         cols_num = ["Ingreso Bruto", "Gastos Especiales", "Gastos Generales / Nómina", "Total Gastos", "Ingreso Neto", "Boletos Cobrados"]
         for c in cols_num:
-            df[c] = pd.to_numeric(df.get(c, 0.0), errors="coerce").fillna(0.0)
+            if c not in df.columns:
+                df[c] = 0.0
+            else:
+                df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
 
         output = io.BytesIO()
         engine = "openpyxl" if OPENPYXL_OK else "xlsxwriter"
@@ -1111,25 +1258,52 @@ st.sidebar.markdown(f"🧠 **Reportes Aprendidos por IA:** `{memoria_ia_global.g
 if st.session_state.registros:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📥 Descargas Oficiales")
-    historial_aud_sidebar = cargar_historial_auditoria()
-    excel_data, estado_excel = generar_excel_completo(st.session_state.registros, historial_aud_sidebar)
-    if estado_excel == "OK" and excel_data:
+    
+    opciones_periodo = [
+        "Todo el Histórico",
+        "Semanal (Últimos 7 días)",
+        "Quincenal (Últimos 15 días)",
+        "Mensual (Últimos 30 días)",
+        "Rango Personalizado"
+    ]
+    periodo_sel = st.sidebar.selectbox("Periodo de descarga:", opciones_periodo, key="side_periodo_sel")
+    
+    f_ini_sel, f_fin_sel = None, None
+    if periodo_sel == "Rango Personalizado":
+        c_p1, c_p2 = st.sidebar.columns(2)
+        with c_p1:
+            f_ini_sel = st.date_input("Desde:", value=date.today() - timedelta(days=7), key="side_f_ini")
+        with c_p2:
+            f_fin_sel = st.date_input("Hasta:", value=date.today(), key="side_f_fin")
+            
+    reps_descarga = filtrar_registros_por_periodo(st.session_state.registros, periodo_sel, f_ini_sel, f_fin_sel)
+    st.sidebar.caption(f"📋 **{len(reps_descarga)}** de **{len(st.session_state.registros)}** reportes en periodo.")
+    
+    tag_periodo = periodo_sel.split(" ")[0].lower()
+    ts_descarga = datetime.now().strftime("%Y%m%d_%H%M")
+    
+    if reps_descarga:
+        historial_aud_sidebar = cargar_historial_auditoria()
+        excel_data, estado_excel = generar_excel_completo(reps_descarga, historial_aud_sidebar)
+        if estado_excel == "OK" and excel_data:
+            st.sidebar.download_button(
+                label=f"📊 Descargar Excel ({periodo_sel.split(' ')[0]})",
+                data=excel_data,
+                file_name=f"ClubPark_Balance_{tag_periodo}_{ts_descarga}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+        
+        df_csv_p = pd.DataFrame(reps_descarga)
         st.sidebar.download_button(
-            label="📊 Descargar Excel Financiero",
-            data=excel_data,
-            file_name=f"ClubPark_Balance_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
-    else:
-        df_csv = pd.DataFrame(st.session_state.registros)
-        st.sidebar.download_button(
-            label="📄 Descargar Respaldo CSV",
-            data=df_csv.to_csv(index=False).encode("utf-8-sig"),
-            file_name=f"ClubPark_Respaldo_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+            label=f"📄 Descargar Respaldo CSV ({periodo_sel.split(' ')[0]})",
+            data=df_csv_p.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"ClubPark_Respaldo_CSV_{tag_periodo}_{ts_descarga}.csv",
             mime="text/csv",
             use_container_width=True
         )
+    else:
+        st.sidebar.warning("No hay reportes en el periodo seleccionado.")
 
 # RESPALDO CIFRADO EN SIDEBAR (SOLO AUDITOR)
 if es_contador:
@@ -1530,98 +1704,206 @@ with tab1:
 # TAB 2: MÓDULO CENTRAL DE RENTABILIDAD POR SUCURSAL
 # =========================================================================
 with tab2:
-    st.markdown("### 📈 Rentabilidad y Rendimiento Financiero por Sucursal")
-    st.markdown("Monitoreo en tiempo real de ingresos brutos, gastos de operación, nómina y margen neto de cada unidad de negocio.")
+    st.markdown("### 📈 Rentabilidad y Tendencias de Aprendizaje")
+    subtab_rent1, subtab_rent2 = st.tabs(["📊 Rentabilidad Financiera Real", "🧠 Tendencias de Aprendizaje IA"])
+    
+    with subtab_rent1:
+        st.markdown("Monitoreo en tiempo real de ingresos brutos, gastos de operación, nómina y margen neto de cada unidad de negocio.")
+    
+        if not st.session_state.registros:
+            st.info("No hay datos suficientes para calcular rentabilidad. Registra el primer reporte.")
+        else:
+            df_r = pd.DataFrame(st.session_state.registros)
+            cols_n = ["Ingreso Bruto", "Gastos Especiales", "Gastos Generales / Nómina", "Total Gastos", "Ingreso Neto", "Boletos Cobrados"]
+            for c in cols_n:
+                if c not in df_r.columns:
+                    df_r[c] = 0.0
+                else:
+                    df_r[c] = pd.to_numeric(df_r[c], errors="coerce").fillna(0.0)
+    
+            # KPIs Globales
+            tot_bruto = df_r["Ingreso Bruto"].sum()
+            tot_gastos = df_r["Total Gastos"].sum()
+            tot_neto = df_r["Ingreso Neto"].sum()
+            margen_global = (tot_neto / tot_bruto * 100) if tot_bruto > 0 else 0.0
+    
+            k1, k2, k3, k4 = st.columns(4)
+            with k1:
+                st.metric("Ingreso Bruto Global", f"${tot_bruto:,.2f} MXN")
+            with k2:
+                st.metric("Gastos y Nómina Global", f"${tot_gastos:,.2f} MXN")
+            with k3:
+                st.metric("Utilidad Neta Real", f"${tot_neto:,.2f} MXN")
+            with k4:
+                st.metric("Margen Global del Negocio", f"{margen_global:.1f}%", delta=evaluar_rentabilidad(margen_global))
+    
+            st.markdown("---")
+    
+            # Agrupación por Sucursal
+            res_suc = df_r.groupby("Sitio / Unidad").agg({
+                "ID": "count",
+                "Boletos Cobrados": "sum",
+                "Ingreso Bruto": "sum",
+                "Gastos Especiales": "sum",
+                "Gastos Generales / Nómina": "sum",
+                "Total Gastos": "sum",
+                "Ingreso Neto": "sum"
+            }).reset_index()
+    
+            res_suc.rename(columns={"ID": "Reportes"}, inplace=True)
+            res_suc["Margen (%)"] = ((res_suc["Ingreso Neto"] / res_suc["Ingreso Bruto"]) * 100).fillna(0.0).round(2)
+            res_suc["Rentabilidad"] = res_suc["Margen (%)"].apply(evaluar_rentabilidad)
+            res_suc["% Gasto s/Ingreso"] = ((res_suc["Total Gastos"] / res_suc["Ingreso Bruto"]) * 100).fillna(0.0).round(1)
+            res_suc = res_suc.sort_values(by="Ingreso Neto", ascending=False)
+    
+            col_top, col_flop = st.columns(2)
+            with col_top:
+                st.markdown("#### 🏆 Top Sucursales Más Rentables")
+                top_3 = res_suc.head(3)
+                for idx, row in top_3.iterrows():
+                    st.markdown(f"""
+                    <div class="card-auditoria" style="border-left-color: #38A169;">
+                        <b>{row['Sitio / Unidad']}</b> | Utilidad: <b>${row['Ingreso Neto']:,.2f} MXN</b><br>
+                        Margen: <span class="badge-verde">{row['Margen (%)']}%</span> | Boletos: {int(row['Boletos Cobrados']):,}
+                    </div>
+                    """, unsafe_allow_html=True)
+    
+            with col_flop:
+                st.markdown("#### ⚠️ Sucursales con Bajo Margen o Pérdida")
+                flop_3 = res_suc.sort_values(by="Margen (%)", ascending=True).head(3)
+                for idx, row in flop_3.iterrows():
+                    color_border = "#E53E3E" if row['Ingreso Neto'] < 0 else "#D69E2E"
+                    badge_class = "badge-rojo" if row['Ingreso Neto'] < 0 else "badge-amarillo"
+                    st.markdown(f"""
+                    <div class="card-auditoria" style="border-left-color: {color_border};">
+                        <b>{row['Sitio / Unidad']}</b> | Utilidad: <b>${row['Ingreso Neto']:,.2f} MXN</b><br>
+                        Margen: <span class="{badge_class}">{row['Margen (%)']}%</span> | Gastos: {row['% Gasto s/Ingreso']}% del ingreso
+                    </div>
+                    """, unsafe_allow_html=True)
+    
+            st.markdown("---")
+            st.markdown("#### 📊 Tabla Detallada de Rentabilidad por Unidad")
+    
+            columnas_mostrar = [
+                "Sitio / Unidad", "Reportes", "Boletos Cobrados", "Ingreso Bruto",
+                "Total Gastos", "Ingreso Neto", "Margen (%)", "% Gasto s/Ingreso", "Rentabilidad"
+            ]
+            
+            # Formatear números para visualización ejecutiva
+            df_tabla = res_suc[columnas_mostrar].copy()
+            df_tabla["Ingreso Bruto"] = df_tabla["Ingreso Bruto"].apply(lambda x: f"${x:,.2f}")
+            df_tabla["Total Gastos"] = df_tabla["Total Gastos"].apply(lambda x: f"${x:,.2f}")
+            df_tabla["Ingreso Neto"] = df_tabla["Ingreso Neto"].apply(lambda x: f"${x:,.2f}")
+            df_tabla["Margen (%)"] = df_tabla["Margen (%)"].apply(lambda x: f"{x:.1f}%")
+            df_tabla["% Gasto s/Ingreso"] = df_tabla["% Gasto s/Ingreso"].apply(lambda x: f"{x:.1f}%")
+            st.dataframe(df_tabla, use_container_width=True, hide_index=True)
+    
+            # Gráfico Ligero Nativo de Barras (Utilidad Neta por Sucursal)
+            st.markdown("#### 📉 Comparativa de Utilidad Neta ($ MXN)")
+            chart_data = res_suc.set_index("Sitio / Unidad")[["Ingreso Neto"]]
+            st.bar_chart(chart_data)
 
-    if not st.session_state.registros:
-        st.info("No hay datos suficientes para calcular rentabilidad. Registra el primer reporte.")
-    else:
-        df_r = pd.DataFrame(st.session_state.registros)
-        cols_n = ["Ingreso Bruto", "Gastos Especiales", "Gastos Generales / Nómina", "Total Gastos", "Ingreso Neto", "Boletos Cobrados"]
-        for c in cols_n:
-            df_r[c] = pd.to_numeric(df_r.get(c, 0.0), errors="coerce").fillna(0.0)
+        with subtab_rent2:
+            st.markdown("### 🧠 Tendencias de Comportamiento Aprendidas por la IA")
+            st.markdown("El motor adaptativo analiza continuamente los reportes para aprender el comportamiento regular de boletos, ingresos, gastos y folios por sucursal.")
+            
+            memoria_ia_view = cargar_memoria_ia()
+            sucursales_dict = memoria_ia_view.get("sucursales", {})
+            
+            tot_aprendidos = memoria_ia_view.get("total_reportes_procesados", 0)
+            suc_activas = len([s for s, d in sucursales_dict.items() if d.get("reportes_aprendidos", 0) > 0])
+            
+            k_ia1, k_ia2, k_ia3, k_ia4 = st.columns(4)
+            with k_ia1:
+                st.metric("Total Reportes Aprendidos", tot_aprendidos)
+            with k_ia2:
+                st.metric("Sucursales con Perfil Activo", f"{suc_activas} / {len(PRECIOS_SUCURSALES)}")
+            with k_ia3:
+                proms_b = [float(d.get("promedio_boletos", 0)) for d in sucursales_dict.values() if d.get("reportes_aprendidos", 0) > 0]
+                prom_b_global = round(sum(proms_b) / len(proms_b), 1) if proms_b else 0
+                st.metric("Boletos Promedio Red", f"{prom_b_global} u.")
+            with k_ia4:
+                proms_m = [float(d.get("margen_promedio", 0)) for d in sucursales_dict.values() if d.get("reportes_aprendidos", 0) > 0]
+                prom_m_global = round(sum(proms_m) / len(proms_m), 1) if proms_m else 0.0
+                st.metric("Margen Promedio Red", f"{prom_m_global:.1f}%")
+                
+            if not sucursales_dict:
+                st.info("Aún no se han procesado suficientes reportes para construir tendencias de aprendizaje. Conforme se registren reportes, aquí se generarán los perfiles adaptativos.")
+            else:
+                st.markdown("---")
+                st.markdown("#### 📋 Matriz de Comportamiento y Perfiles Predictivos")
+                
+                filas_ia = []
+                for suc_n, d_suc in sucursales_dict.items():
+                    n_rep = int(d_suc.get("reportes_aprendidos", 0))
+                    if n_rep == 0:
+                        continue
+                    mean_b = float(d_suc.get("promedio_boletos", 0))
+                    m2_b = float(d_suc.get("boletos_m2", 0))
+                    std_b = math.sqrt(m2_b / (n_rep - 1)) if n_rep > 1 else 0.0
+                    rango_b = f"{max(0, int(round(mean_b - 1.5 * std_b)))} a {int(round(mean_b + 1.5 * std_b))} bol." if n_rep > 1 else f"~{int(mean_b)} bol."
+                    
+                    filas_ia.append({
+                        "Sucursal": suc_n,
+                        "Reportes": n_rep,
+                        "Boletos Promedio": f"{mean_b:.1f} (±{std_b:.1f})",
+                        "Rango Esperado": rango_b,
+                        "Ingreso Bruto Prom.": f"${d_suc.get('promedio_ingreso_bruto', 0):,.2f}",
+                        "Gastos Prom.": f"${d_suc.get('promedio_gastos', 0):,.2f}",
+                        "Margen Prom.": f"{d_suc.get('margen_promedio', 0):.1f}%",
+                        "Último Folio Block": d_suc.get("ultimo_folio_final", 0),
+                        "Horario Habitual": d_suc.get("horario_frecuente", "N/D"),
+                        "Supervisor Frecuente": d_suc.get("supervisor_frecuente", "Supervisor"),
+                        "_boletos_val": mean_b,
+                        "_margen_val": float(d_suc.get("margen_promedio", 0))
+                    })
+                    
+                if filas_ia:
+                    df_ia = pd.DataFrame(filas_ia)
+                    st.dataframe(df_ia.drop(columns=["_boletos_val", "_margen_val"]), use_container_width=True, hide_index=True)
+                    
+                    st.markdown("---")
+                    c_g_ia1, c_g_ia2 = st.columns(2)
+                    with c_g_ia1:
+                        st.markdown("##### 🚗 Boletos Promedio Aprendidos por Sucursal")
+                        df_chart_b = df_ia.set_index("Sucursal")[["_boletos_val"]].rename(columns={"_boletos_val": "Boletos Promedio"}).sort_values(by="Boletos Promedio", ascending=False)
+                        st.bar_chart(df_chart_b)
+                    with c_g_ia2:
+                        st.markdown("##### 📈 Margen Promedio Aprendido (%) por Sucursal")
+                        df_chart_m = df_ia.set_index("Sucursal")[["_margen_val"]].rename(columns={"_margen_val": "Margen %"}).sort_values(by="Margen %", ascending=False)
+                        st.bar_chart(df_chart_m)
+                        
+                    # Detección de desviaciones
+                    st.markdown("---")
+                    st.markdown("#### 🔍 Detección de Desviaciones contra la Tendencia Aprendida")
+                    alertas_detectadas = []
+                    if st.session_state.registros:
+                        vistos = set()
+                        for r in reversed(st.session_state.registros):
+                            s_r = r.get("Sitio / Unidad")
+                            if s_r in sucursales_dict and s_r not in vistos:
+                                vistos.add(s_r)
+                                d_suc = sucursales_dict[s_r]
+                                n_rep = int(d_suc.get("reportes_aprendidos", 0))
+                                if n_rep >= 3:
+                                    b_r = float(r.get("Boletos Cobrados", 0))
+                                    mean_b = float(d_suc.get("promedio_boletos", 0))
+                                    std_b = math.sqrt(float(d_suc.get("boletos_m2", 0)) / (n_rep - 1)) if n_rep > 1 else 5.0
+                                    if abs(b_r - mean_b) > 2.0 * max(std_b, 5.0):
+                                        alertas_detectadas.append({
+                                            "Sucursal": s_r,
+                                            "Fecha": r.get("Fecha"),
+                                            "Reportado": b_r,
+                                            "Esperado": f"{mean_b:.1f} ± {std_b:.1f}",
+                                            "Diferencia": f"{b_r - mean_b:+.1f} boletos",
+                                            "Usuario": r.get("Usuario") or r.get("Elaboró")
+                                        })
+                    if alertas_detectadas:
+                        for a in alertas_detectadas:
+                            st.warning(f"⚠️ **{a['Sucursal']}** ({a['Fecha']}): Registró **{a['Reportado']} boletos** (esperado: {a['Esperado']}, desviación: {a['Diferencia']}). Responsable: {a['Usuario']}.")
+                    else:
+                        st.success("✅ Todas las sucursales operan actualmente dentro de los márgenes normales de sus tendencias aprendidas.")
 
-        # KPIs Globales
-        tot_bruto = df_r["Ingreso Bruto"].sum()
-        tot_gastos = df_r["Total Gastos"].sum()
-        tot_neto = df_r["Ingreso Neto"].sum()
-        margen_global = (tot_neto / tot_bruto * 100) if tot_bruto > 0 else 0.0
-
-        k1, k2, k3, k4 = st.columns(4)
-        with k1:
-            st.metric("Ingreso Bruto Global", f"${tot_bruto:,.2f} MXN")
-        with k2:
-            st.metric("Gastos y Nómina Global", f"${tot_gastos:,.2f} MXN")
-        with k3:
-            st.metric("Utilidad Neta Real", f"${tot_neto:,.2f} MXN")
-        with k4:
-            st.metric("Margen Global del Negocio", f"{margen_global:.1f}%", delta=evaluar_rentabilidad(margen_global))
-
-        st.markdown("---")
-
-        # Agrupación por Sucursal
-        res_suc = df_r.groupby("Sitio / Unidad").agg({
-            "ID": "count",
-            "Boletos Cobrados": "sum",
-            "Ingreso Bruto": "sum",
-            "Gastos Especiales": "sum",
-            "Gastos Generales / Nómina": "sum",
-            "Total Gastos": "sum",
-            "Ingreso Neto": "sum"
-        }).reset_index()
-
-        res_suc.rename(columns={"ID": "Reportes"}, inplace=True)
-        res_suc["Margen (%)"] = ((res_suc["Ingreso Neto"] / res_suc["Ingreso Bruto"]) * 100).fillna(0.0).round(2)
-        res_suc["Rentabilidad"] = res_suc["Margen (%)"].apply(evaluar_rentabilidad)
-        res_suc["% Gasto s/Ingreso"] = ((res_suc["Total Gastos"] / res_suc["Ingreso Bruto"]) * 100).fillna(0.0).round(1)
-        res_suc = res_suc.sort_values(by="Ingreso Neto", ascending=False)
-
-        col_top, col_flop = st.columns(2)
-        with col_top:
-            st.markdown("#### 🏆 Top Sucursales Más Rentables")
-            top_3 = res_suc.head(3)
-            for idx, row in top_3.iterrows():
-                st.markdown(f"""
-                <div class="card-auditoria" style="border-left-color: #38A169;">
-                    <b>{row['Sitio / Unidad']}</b> | Utilidad: <b>${row['Ingreso Neto']:,.2f} MXN</b><br>
-                    Margen: <span class="badge-verde">{row['Margen (%)']}%</span> | Boletos: {int(row['Boletos Cobrados']):,}
-                </div>
-                """, unsafe_allow_html=True)
-
-        with col_flop:
-            st.markdown("#### ⚠️ Sucursales con Bajo Margen o Pérdida")
-            flop_3 = res_suc.sort_values(by="Margen (%)", ascending=True).head(3)
-            for idx, row in flop_3.iterrows():
-                color_border = "#E53E3E" if row['Ingreso Neto'] < 0 else "#D69E2E"
-                badge_class = "badge-rojo" if row['Ingreso Neto'] < 0 else "badge-amarillo"
-                st.markdown(f"""
-                <div class="card-auditoria" style="border-left-color: {color_border};">
-                    <b>{row['Sitio / Unidad']}</b> | Utilidad: <b>${row['Ingreso Neto']:,.2f} MXN</b><br>
-                    Margen: <span class="{badge_class}">{row['Margen (%)']}%</span> | Gastos: {row['% Gasto s/Ingreso']}% del ingreso
-                </div>
-                """, unsafe_allow_html=True)
-
-        st.markdown("---")
-        st.markdown("#### 📊 Tabla Detallada de Rentabilidad por Unidad")
-
-        columnas_mostrar = [
-            "Sitio / Unidad", "Reportes", "Boletos Cobrados", "Ingreso Bruto",
-            "Total Gastos", "Ingreso Neto", "Margen (%)", "% Gasto s/Ingreso", "Rentabilidad"
-        ]
-        
-        # Formatear números para visualización ejecutiva
-        df_tabla = res_suc[columnas_mostrar].copy()
-        df_tabla["Ingreso Bruto"] = df_tabla["Ingreso Bruto"].apply(lambda x: f"${x:,.2f}")
-        df_tabla["Total Gastos"] = df_tabla["Total Gastos"].apply(lambda x: f"${x:,.2f}")
-        df_tabla["Ingreso Neto"] = df_tabla["Ingreso Neto"].apply(lambda x: f"${x:,.2f}")
-        df_tabla["Margen (%)"] = df_tabla["Margen (%)"].apply(lambda x: f"{x:.1f}%")
-        df_tabla["% Gasto s/Ingreso"] = df_tabla["% Gasto s/Ingreso"].apply(lambda x: f"{x:.1f}%")
-        st.dataframe(df_tabla, use_container_width=True, hide_index=True)
-
-        # Gráfico Ligero Nativo de Barras (Utilidad Neta por Sucursal)
-        st.markdown("#### 📉 Comparativa de Utilidad Neta ($ MXN)")
-        chart_data = res_suc.set_index("Sitio / Unidad")[["Ingreso Neto"]]
-        st.bar_chart(chart_data)
 
 # =========================================================================
 # TAB 3: AUDITORÍA Y BITÁCORA DE HISTORIAL (AUDITOR) O MIS REPORTES (SUPERVISOR)
@@ -1693,7 +1975,7 @@ else:
 if es_contador:
     # TAB 4: Evento Extraordinario
     with tab4:
-        st.markdown("### ⚡ Registro de Evento Extraordinario")
+        st.markdown("### ⚡ Registro y Asignación de Evento Extraordinario")
         c_ev1, c_ev2 = st.columns(2)
         with c_ev1:
             ev_f = st.date_input("Fecha del Evento:", value=date.today(), key="ev_f_in")
@@ -1702,10 +1984,18 @@ if es_contador:
         with c_ev2:
             ev_h_ini = st.time_input("Inicio Evento:", value=time(18, 0), key="ev_hi_in")
             ev_h_fin = st.time_input("Fin Evento:", value=time(2, 0), key="ev_hf_in")
-            ev_bol = st.number_input("Boletos Cobrados:", min_value=0, value=60, step=1, key="ev_b_in")
+            ev_bol = st.number_input("Boletos Cobrados / Estimados:", min_value=0, value=60, step=1, key="ev_b_in")
 
-        ev_gastos = st.number_input("Total Gastos / Nómina Evento ($ MXN):", min_value=0.0, value=0.0, step=50.0, key="ev_g_in")
-        ev_elab = st.text_input("Responsable del Evento:", value=st.session_state.usuario_autenticado, key="ev_el_in")
+        c_ev3, c_ev4 = st.columns(2)
+        with c_ev3:
+            ev_gastos = st.number_input("Total Gastos / Nómina Evento ($ MXN):", min_value=0.0, value=0.0, step=50.0, key="ev_g_in")
+        with c_ev4:
+            # ASIGNACIÓN DE SUPERVISOR AL EVENTO EXTRAORDINARIO
+            ev_asignado = st.selectbox(
+                "🎯 Asignar Supervisor Responsable del Evento:",
+                ["José de Jesús", "Víctor Manuel", "Ambos Supervisores (Operación Conjunta)", "Víctor (Contador)"],
+                key="ev_asig_sel"
+            )
 
         ev_bruto = float(ev_bol) * float(ev_costo)
         ev_neto = ev_bruto - float(ev_gastos)
@@ -1713,7 +2003,7 @@ if es_contador:
 
         st.metric("Utilidad Generada en Evento", f"${ev_neto:,.2f} MXN", delta=f"{ev_margen:.1f}% Margen")
 
-        if st.button("💾 Guardar Evento Extraordinario", type="primary", key="btn_save_event"):
+        if st.button("💾 Guardar y Asignar Evento Extraordinario", type="primary", key="btn_save_event"):
             if ev_suc != "-- Selecciona o busca la sucursal --":
                 id_ev = f"EVT_{uuid.uuid4().hex[:6]}"
                 evento_obj = {
@@ -1735,8 +2025,9 @@ if es_contador:
                     "Margen (%)": round(ev_margen, 2),
                     "Rentabilidad": evaluar_rentabilidad(ev_margen),
                     "Score Auditoría": 100,
-                    "Elaboró": ev_elab,
-                    "Usuario": st.session_state.usuario_autenticado,
+                    "Supervisor Asignado": ev_asignado,
+                    "Elaboró": ev_asignado,
+                    "Usuario": ev_asignado,
                     "Recibe": "Víctor (Contador)",
                     "Tipo": "Evento Extraordinario",
                     "foto_path": None,
@@ -1744,25 +2035,85 @@ if es_contador:
                 }
                 st.session_state.registros.append(evento_obj)
                 guardar_registros_permanentes(st.session_state.registros)
-                registrar_evento_auditoria("Creación de Evento", st.session_state.usuario_autenticado, id_ev, ev_suc, ev_f.strftime("%d/%m/%Y"), f"Evento con {ev_bol} boletos y utilidad de ${ev_neto:,.2f}")
+                registrar_evento_auditoria("Creación de Evento", st.session_state.usuario_autenticado, id_ev, ev_suc, ev_f.strftime("%d/%m/%Y"), f"Evento asignado a {ev_asignado} con {ev_bol} boletos y utilidad de ${ev_neto:,.2f}")
                 actualizar_memoria_ia(evento_obj)
-                st.success("✅ Evento extraordinario guardado exitosamente.")
+                st.success(f"✅ Evento extraordinario guardado y asignado a **{ev_asignado}**.")
                 st.rerun()
+
+        # SECCIÓN DE REASIGNACIÓN DE EVENTOS EXISTENTES (AUDITOR)
+        st.markdown("---")
+        st.markdown("#### 🔄 Reasignación de Eventos Extraordinarios Existentes")
+        eventos_existentes = [r for r in st.session_state.registros if r.get("Tipo") == "Evento Extraordinario"]
+        if eventos_existentes:
+            opciones_ev = [f"{e.get('ID')} | {e.get('Fecha')} | {e.get('Sitio / Unidad')} | Asignado: {e.get('Supervisor Asignado', e.get('Elaboró', 'Sin asignar'))}" for e in eventos_existentes]
+            sel_ev_str = st.selectbox("Selecciona evento para reasignar responsable:", opciones_ev, key="sel_ev_reasig")
+            ev_id_target = sel_ev_str.split(" | ")[0].strip()
+            ev_target = next((e for e in eventos_existentes if e.get("ID") == ev_id_target), None)
+            if ev_target:
+                c_re1, c_re2 = st.columns(2)
+                with c_re1:
+                    nuevo_sup = st.selectbox(
+                        "Nuevo Supervisor Asignado:",
+                        ["José de Jesús", "Víctor Manuel", "Ambos Supervisores (Operación Conjunta)", "Víctor (Contador)"],
+                        index=0 if "Jesús" in ev_target.get("Supervisor Asignado", "") else 1,
+                        key="reasig_sup_sel"
+                    )
+                with c_re2:
+                    st.write("")
+                    st.write("")
+                    if st.button("🔄 Guardar Reasignación de Supervisor", use_container_width=True, key="btn_save_reasig"):
+                        ev_target["Supervisor Asignado"] = nuevo_sup
+                        ev_target["Elaboró"] = nuevo_sup
+                        ev_target["Usuario"] = nuevo_sup
+                        guardar_registros_permanentes(st.session_state.registros)
+                        registrar_evento_auditoria("Reasignación de Evento", st.session_state.usuario_autenticado, ev_target.get("ID"), ev_target.get("Sitio / Unidad"), ev_target.get("Fecha"), f"Evento reasignado a {nuevo_sup}")
+                        st.success(f"✅ Evento reasignado exitosamente a **{nuevo_sup}**.")
+                        st.rerun()
+        else:
+            st.caption("No hay eventos extraordinarios registrados actualmente.")
 
     # TAB 5: WhatsApp y Alarmas
     with tab5:
-        st.markdown("### 📲 Monitoreo de Reportes Faltantes y Notificaciones WhatsApp")
-        st.markdown("Calcula los reportes pendientes de las sucursales asignadas. Los botones preparan el mensaje y abren WhatsApp; el envío requiere confirmar en WhatsApp. Para envío automático cuando la app no está abierta se requiere un programador persistente y WhatsApp Business API.")
+        st.markdown("### 📲 Monitoreo de Reportes Faltantes y Automatización WhatsApp")
+        st.markdown("Control proactivo de entregas diarias y avisos de eventos con 2 horas de anticipación. Permite envíos automáticos vía API o disparos rápidos en 1 clic.")
 
-        # Conteo de reportes faltantes por supervisor para la fecha actual (o seleccionada)
-        col_w_fec, col_w_tel = st.columns(2)
+        cfg_actual = cargar_config_operativa()
+
+        # CONFIGURACIÓN PERSISTENTE DE CONTACTO
+        with st.expander("⚙️ Configuración de Teléfonos y Automatización API", expanded=False):
+            c_cfg1, c_cfg2 = st.columns(2)
+            with c_cfg1:
+                nuevo_tel_j = st.text_input("WhatsApp José de Jesús (con clave país, ej. 5255...):", value=cfg_actual.get("tel_jesus", "525500000001"), key="cfg_tel_j")
+                nuevo_tel_v = st.text_input("WhatsApp Víctor Manuel (con clave país, ej. 5255...):", value=cfg_actual.get("tel_victor", "525500000002"), key="cfg_tel_v")
+            with c_cfg2:
+                st.caption("Opcional: WhatsApp Business API (Connector Gateway de Lovable)")
+                api_lovable = st.text_input("LOVABLE_API_KEY (opcional):", value=cfg_actual.get("lovable_api_key", ""), type="password", key="cfg_l_key")
+                api_whatsapp = st.text_input("WHATSAPP_API_KEY (opcional):", value=cfg_actual.get("whatsapp_api_key", ""), type="password", key="cfg_w_key")
+            
+            if st.button("💾 Guardar Configuración de Teléfonos y API", key="btn_save_cfg_oper"):
+                cfg_actual["tel_jesus"] = nuevo_tel_j.strip()
+                cfg_actual["tel_victor"] = nuevo_tel_v.strip()
+                cfg_actual["lovable_api_key"] = api_lovable.strip()
+                cfg_actual["whatsapp_api_key"] = api_whatsapp.strip()
+                guardar_config_operativa(cfg_actual)
+                st.success("✅ Configuración operativa guardada permanentemente.")
+                st.rerun()
+
+        tel_jesus = cfg_actual.get("tel_jesus", "")
+        tel_victor = cfg_actual.get("tel_victor", "")
+
+        col_w_fec, col_w_acc = st.columns([1, 1])
         with col_w_fec:
             fec_monitoreo = st.date_input("Fecha a auditar entregas:", value=date.today(), key="fec_mon_w")
             fec_mon_str = fec_monitoreo.strftime("%d/%m/%Y")
-        with col_w_tel:
-            st.caption("Configuración de teléfonos móviles para envío directo de WhatsApp:")
-            tel_jesus = st.text_input("Teléfono José de Jesús (WhatsApp, con clave de país):", value="", key="tel_jes_in", placeholder="Ej. 52 + 10 dígitos")
-            tel_victor = st.text_input("Teléfono Víctor Manuel (WhatsApp, con clave de país):", value="", key="tel_vic_in", placeholder="Ej. 52 + 10 dígitos")
+        with col_w_acc:
+            st.write("")
+            st.caption("Estado de integración:")
+            tiene_api = bool((cfg_actual.get("lovable_api_key") or os.environ.get("LOVABLE_API_KEY")) and (cfg_actual.get("whatsapp_api_key") or os.environ.get("WHATSAPP_API_KEY")))
+            if tiene_api:
+                st.success("🟢 WhatsApp Gateway API activa (Envío 100% automático habilitado)")
+            else:
+                st.info("🟡 Modo Web/App Activo (1-clic genera y abre mensaje prellenado en WhatsApp)")
 
         # Reportes existentes en esa fecha
         reps_fecha = [r for r in st.session_state.registros if r.get("Fecha") == fec_mon_str]
@@ -1771,49 +2122,118 @@ if es_contador:
         faltantes_jesus = [u for u in UNIDADES_JESUS if u not in unidades_reportadas]
         faltantes_victor = [u for u in UNIDADES_VICTOR if u not in unidades_reportadas]
 
+        # DISPARO AUTOMATIZADO MASIVO
+        st.markdown("---")
+        c_auto1, c_auto2 = st.columns([2, 1])
+        with c_auto1:
+            st.markdown("#### ⚡ Automatización Masiva de Avisos")
+            st.caption("Dispara en un solo paso los avisos de faltantes del día a ambos supervisores.")
+        with c_auto2:
+            st.write("")
+            if st.button("🚀 Enviar Todos los Avisos Pendientes", type="primary", use_container_width=True, key="btn_send_all_auto"):
+                enviados_c = 0
+                if faltantes_jesus:
+                    msg_j = f"Hola Jesús, te recordamos que para la fecha {fec_mon_str} tienes {len(faltantes_jesus)} reporte(s) pendiente(s) por subir a CLUB PARK: {', '.join(faltantes_jesus)}. Favor de cargarlos a la brevedad."
+                    if tiene_api:
+                        ok_j, res_j = enviar_whatsapp_directo_api(tel_jesus, msg_j, cfg_actual.get("lovable_api_key"), cfg_actual.get("whatsapp_api_key"))
+                        registrar_notificacion_bitacora("José de Jesús", "Reportes Faltantes", msg_j, "EXITOSO" if ok_j else "FALLIDO", res_j)
+                        enviados_c += 1
+                    else:
+                        registrar_notificacion_bitacora("José de Jesús", "Reportes Faltantes", msg_j, "PREPARADO_WEB", "Enlace wa.me generado")
+                        enviados_c += 1
+
+                if faltantes_victor:
+                    msg_v = f"Hola Víctor, te recordamos que para la fecha {fec_mon_str} tienes {len(faltantes_victor)} reporte(s) pendiente(s) por subir a CLUB PARK: {', '.join(faltantes_victor)}. Favor de cargarlos a la brevedad."
+                    if tiene_api:
+                        ok_v, res_v = enviar_whatsapp_directo_api(tel_victor, msg_v, cfg_actual.get("lovable_api_key"), cfg_actual.get("whatsapp_api_key"))
+                        registrar_notificacion_bitacora("Víctor Manuel", "Reportes Faltantes", msg_v, "EXITOSO" if ok_v else "FALLIDO", res_v)
+                        enviados_c += 1
+                    else:
+                        registrar_notificacion_bitacora("Víctor Manuel", "Reportes Faltantes", msg_v, "PREPARADO_WEB", "Enlace wa.me generado")
+                        enviados_c += 1
+
+                st.success(f"✅ Procesados {enviados_c} avisos automáticos. Consulta el historial abajo.")
+                st.rerun()
+
+        st.markdown("---")
         c_w1, c_w2 = st.columns(2)
         with c_w1:
             st.markdown(f"#### 👤 José de Jesús ({len(faltantes_jesus)} pendientes)")
             if faltantes_jesus:
-                st.warning(f"Unidades pendientes de subir: {', '.join(faltantes_jesus)}")
+                st.warning(f"Unidades pendientes: {', '.join(faltantes_jesus)}")
                 msg_j = f"Hola Jesús, te recordamos que para la fecha {fec_mon_str} tienes {len(faltantes_jesus)} reporte(s) pendiente(s) por subir a CLUB PARK: {', '.join(faltantes_jesus)}. Favor de cargarlos a la brevedad."
-                if len("".join(ch for ch in tel_jesus if ch.isdigit())) >= 10:
+                
+                c_btn_j1, c_btn_j2 = st.columns(2)
+                with c_btn_j1:
                     url_w_j = generar_enlace_whatsapp(tel_jesus, msg_j)
-                    st.link_button("📲 Abrir recordatorio para WhatsApp de Jesús", url_w_j, use_container_width=True)
-                else:
-                    st.info("Agrega el número real de WhatsApp de Jesús para generar el recordatorio.")
+                    st.link_button("📲 Abrir en WhatsApp", url_w_j, use_container_width=True)
+                with c_btn_j2:
+                    if tiene_api and st.button("🚀 Enviar Directo API (Jesús)", key="btn_api_send_j", use_container_width=True):
+                        ok, det = enviar_whatsapp_directo_api(tel_jesus, msg_j, cfg_actual.get("lovable_api_key"), cfg_actual.get("whatsapp_api_key"))
+                        registrar_notificacion_bitacora("José de Jesús", "Faltantes", msg_j, "EXITOSO" if ok else "FALLIDO", det)
+                        if ok:
+                            st.success("Mensaje enviado automáticamente.")
+                        else:
+                            st.error(det)
             else:
                 st.success("✅ Jesús tiene todas sus unidades cubiertas al 100%.")
 
         with c_w2:
             st.markdown(f"#### 👤 Víctor Manuel ({len(faltantes_victor)} pendientes)")
             if faltantes_victor:
-                st.warning(f"Unidades pendientes de subir: {', '.join(faltantes_victor)}")
+                st.warning(f"Unidades pendientes: {', '.join(faltantes_victor)}")
                 msg_v = f"Hola Víctor, te recordamos que para la fecha {fec_mon_str} tienes {len(faltantes_victor)} reporte(s) pendiente(s) por subir a CLUB PARK: {', '.join(faltantes_victor)}. Favor de cargarlos a la brevedad."
-                if len("".join(ch for ch in tel_victor if ch.isdigit())) >= 10:
+                
+                c_btn_v1, c_btn_v2 = st.columns(2)
+                with c_btn_v1:
                     url_w_v = generar_enlace_whatsapp(tel_victor, msg_v)
-                    st.link_button("📲 Abrir recordatorio para WhatsApp de Víctor", url_w_v, use_container_width=True)
-                else:
-                    st.info("Agrega el número real de WhatsApp de Víctor para generar el recordatorio.")
+                    st.link_button("📲 Abrir en WhatsApp", url_w_v, use_container_width=True)
+                with c_btn_v2:
+                    if tiene_api and st.button("🚀 Enviar Directo API (Víctor)", key="btn_api_send_v", use_container_width=True):
+                        ok, det = enviar_whatsapp_directo_api(tel_victor, msg_v, cfg_actual.get("lovable_api_key"), cfg_actual.get("whatsapp_api_key"))
+                        registrar_notificacion_bitacora("Víctor Manuel", "Faltantes", msg_v, "EXITOSO" if ok else "FALLIDO", det)
+                        if ok:
+                            st.success("Mensaje enviado automáticamente.")
+                        else:
+                            st.error(det)
             else:
                 st.success("✅ Víctor tiene todas sus unidades cubiertas al 100%.")
 
         st.markdown("---")
-        st.markdown("#### ⏰ Notificación de Eventos Extraordinarios a Supervisores")
+        st.markdown("#### ⏰ Notificación de Eventos Extraordinarios con Asignación Específica")
         evs_futuros = [r for r in st.session_state.registros if r.get("Tipo") == "Evento Extraordinario"]
         if evs_futuros:
             for ev in evs_futuros[-5:]:
-                st.write(f"⚡ **{ev.get('Sitio / Unidad')}** | Fecha: `{ev.get('Fecha')}` | Horario: `{ev.get('Horario')}` | Responsable: `{ev.get('Elaboró')}`")
-                msg_ev = f"⚠️ AVISO CLUB PARK - EVENTO EXTRAORDINARIO\nSede: {ev.get('Sitio / Unidad')}\nFecha: {ev.get('Fecha')} a las {ev.get('Horario')}\nResponsable: {ev.get('Elaboró')}\nFavor de estar atentos y asegurar la cobertura operativa."
+                sup_asig = ev.get("Supervisor Asignado") or ev.get("Elaboró") or "Sin asignar"
+                st.write(f"⚡ **{ev.get('Sitio / Unidad')}** | Fecha: `{ev.get('Fecha')}` ({ev.get('Horario')}) | 🎯 **Asignado a: {sup_asig}**")
+                msg_ev = f"""⚠️ AVISO CLUB PARK - EVENTO EXTRAORDINARIO
+Sede: {ev.get('Sitio / Unidad')}
+Fecha: {ev.get('Fecha')} a las {ev.get('Horario')}
+Supervisor Asignado: {sup_asig}
+Favor de coordinar la operación con 2 horas de anticipación."""
+                
                 c_btn_w1, c_btn_w2 = st.columns(2)
                 with c_btn_w1:
-                    st.link_button(f"Notificar a Jesús por WhatsApp", generar_enlace_whatsapp(tel_jesus, msg_ev), use_container_width=True)
+                    dest_es_jesus = "Jesús" in sup_asig or "Ambos" in sup_asig
+                    lbl_j = "📲 Notificar a Jesús (Asignado)" if dest_es_jesus else "📲 Notificar a Jesús"
+                    st.link_button(lbl_j, generar_enlace_whatsapp(tel_jesus, msg_ev), use_container_width=True)
                 with c_btn_w2:
-                    st.link_button(f"Notificar a Víctor por WhatsApp", generar_enlace_whatsapp(tel_victor, msg_ev), use_container_width=True)
+                    dest_es_victor = "Víctor" in sup_asig or "Ambos" in sup_asig
+                    lbl_v = "📲 Notificar a Víctor (Asignado)" if dest_es_victor else "📲 Notificar a Víctor"
+                    st.link_button(lbl_v, generar_enlace_whatsapp(tel_victor, msg_ev), use_container_width=True)
         else:
             st.info("No hay eventos extraordinarios registrados recientemente.")
 
-    # TAB 6: Gestión y Edición de Reportes
+        # BITÁCORA DE NOTIFICACIONES
+        st.markdown("---")
+        with st.expander("📋 Bitácora de Avisos WhatsApp Enviados", expanded=False):
+            bit_notifs = cargar_json_seguro(NOTIF_LOG_FILE, [])
+            if bit_notifs:
+                st.dataframe(pd.DataFrame(bit_notifs), use_container_width=True, hide_index=True)
+            else:
+                st.caption("No hay registros de avisos enviados aún.")
+
+# TAB 6: Gestión y Edición de Reportes
     with tab6:
         st.markdown("### 🗂️ Gestión, Edición y Eliminación de Reportes")
         st.caption("Reportes organizados por la cuenta que los registró. Los reportes históricos sin ese dato se agrupan según el campo ‘Elaboró’; confirma autoría antes de atribuirlos.")
@@ -1894,6 +2314,42 @@ if es_contador:
         else:
             st.info("No hay reportes para gestionar.")
 
+        # ZONA DE AUDITORÍA: REINICIO TOTAL DEL SISTEMA DESDE CERO
+        st.markdown("---")
+        st.markdown("### 🚨 Zona Crítica de Auditoría: Reinicio Total del Sistema")
+        st.caption("Exclusivo para el Contador Auditor: Permite restablecer el sistema desde cero eliminando reportes y/o fotos físicas.")
+        
+        with st.expander("⚠️ Herramienta de Reinicio desde Cero (Peligro: Irreversible)", expanded=False):
+            st.warning("Esta operación borrará de forma permanente los registros y/o fotografías seleccionadas. Asegúrate de haber descargado el Respaldo Oficial en Excel o CSV antes de proceder.")
+            
+            fotos_disco_actuales = os.listdir(FOTOS_DIR) if os.path.exists(FOTOS_DIR) else []
+            st.markdown(f"- 📊 Reportes en Sistema actualmente: **{len(st.session_state.registros)}**")
+            st.markdown(f"- 📷 Fotografías físicas guardadas: **{len(fotos_disco_actuales)}**")
+            
+            c_rst1, c_rst2 = st.columns(2)
+            with c_rst1:
+                chk_del_reps = st.checkbox("🗑️ Borrar todos los reportes en sistema", value=True, key="chk_del_reps")
+                chk_del_fotos = st.checkbox("📷 Borrar todas las fotos físicas en disco", value=True, key="chk_del_fotos")
+            with c_rst2:
+                chk_del_ia = st.checkbox("🧠 Reiniciar memoria de aprendizaje IA", value=False, key="chk_del_ia")
+                chk_del_bit = st.checkbox("📜 Limpiar bitácora de auditoría histórica", value=False, key="chk_del_bit")
+                
+            confirma_check = st.checkbox("⚠️ Confirmo bajo mi responsabilidad que deseo reiniciar el sistema desde cero", key="chk_conf_reset")
+            palabra_seguridad = st.text_input("Para desbloquear el reinicio, escribe 'REINICIAR' en mayúsculas:", key="txt_conf_reset")
+            
+            boton_habilitado = confirma_check and (palabra_seguridad.strip() == "REINICIAR")
+            if st.button("🔥 EJECUTAR REINICIO TOTAL DEL SISTEMA", type="primary", disabled=not boton_habilitado, key="btn_exec_reset_sys"):
+                reps_b, fotos_b = reiniciar_sistema_desde_cero(
+                    borrar_reportes=chk_del_reps,
+                    borrar_fotos=chk_del_fotos,
+                    reiniciar_memoria=chk_del_ia,
+                    reiniciar_bitacora=chk_del_bit,
+                    usuario_auditor=st.session_state.usuario_autenticado
+                )
+                st.success(f"✅ Sistema reiniciado con éxito: Se eliminaron {reps_b} reportes y {fotos_b} fotos físicas.")
+                st.rerun()
+
+
     # TAB 7: Suite de Pruebas y Diagnóstico de Despliegue
     with tab7:
         st.markdown("### 🧪 Diagnóstico Automatizado del Sistema y Despliegue")
@@ -1916,10 +2372,21 @@ if not es_contador:
         st.markdown("Consulta aquí los eventos extraordinarios asignados para coordinar la operación con 2 horas de anticipación.")
         evs_sup = [r for r in st.session_state.registros if r.get("Tipo") == "Evento Extraordinario"]
         if evs_sup:
-            for ev in evs_sup[-5:]:
-                st.info(f"📍 **{ev.get('Sitio / Unidad')}** | Fecha: **{ev.get('Fecha')}** ({ev.get('Horario')}) | Responsable: {ev.get('Elaboró')}")
+            usuario_actual = st.session_state.usuario_autenticado
+            evs_propios = [e for e in evs_sup if e.get("Supervisor Asignado") == usuario_actual or e.get("Elaboró") == usuario_actual or "Ambos" in str(e.get("Supervisor Asignado", ""))]
+            evs_otros = [e for e in evs_sup if e not in evs_propios]
+            
+            if evs_propios:
+                st.markdown(f"#### 🎯 Eventos Asignados Específicamente a Ti ({usuario_actual})")
+                for ev in evs_propios:
+                    st.success(f"📍 **{ev.get('Sitio / Unidad')}** | Fecha: **{ev.get('Fecha')}** ({ev.get('Horario')}) | Boletos est.: **{ev.get('Boletos Cobrados')}** | Responsable: **{ev.get('Supervisor Asignado', ev.get('Elaboró'))}**")
+            else:
+                st.info(f"No tienes eventos extraordinarios asignados directamente en este momento.")
+            
+            if evs_otros:
+                with st.expander(f"📋 Otros Eventos de la Red ({len(evs_otros)})", expanded=False):
+                    for ev in evs_otros:
+                        st.info(f"📍 **{ev.get('Sitio / Unidad')}** | Fecha: **{ev.get('Fecha')}** ({ev.get('Horario')}) | Responsable: **{ev.get('Supervisor Asignado', ev.get('Elaboró'))}**")
         else:
             st.caption("No hay eventos programados en este momento.")
-        
-    
- 
+  
