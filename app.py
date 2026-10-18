@@ -1708,7 +1708,7 @@ if st.session_state.usuario_autenticado is None:
             st.error("Acceso bloqueado: configura PASS_SUPERVISOR y PASS_AUDITOR en Secrets de Streamlit antes de usar la aplicación.")
             st.stop()
 
-                if st.button("🔑 Iniciar Sesión", use_container_width=True, type="primary"):
+             if st.button("🔑 Iniciar Sesión", use_container_width=True, type="primary"):
             if nombre_usuario in ["Víctor Manuel", "José de Jesús"] and hmac.compare_digest(password, pass_visor):
                 st.session_state.usuario_autenticado = nombre_usuario
                 st.session_state.rol = "Supervisor Global" # Igualado con la App Operativa
