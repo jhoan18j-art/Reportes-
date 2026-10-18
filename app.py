@@ -1708,23 +1708,25 @@ if st.session_state.usuario_autenticado is None:
             st.error("Acceso bloqueado: configura PASS_SUPERVISOR y PASS_AUDITOR en Secrets de Streamlit antes de usar la aplicación.")
             st.stop()
 
-if st.button("🔑 Iniciar Sesión", use_container_width=True, type="primary"):
+        if st.button("🔑 Iniciar Sesión", use_container_width=True, type="primary"):
             if nombre_usuario in ["Víctor Manuel", "José de Jesús"] and hmac.compare_digest(password, pass_visor):
                 st.session_state.usuario_autenticado = nombre_usuario
-                st.session_state.rol = "Supervisor Global" # Igualado con la App Operativa
-                st.session_state.sucursal_asignada = "TODAS" # Variable clave añadida
+                st.session_state.rol = "Supervisor Global"
+                st.session_state.sucursal_asignada = "TODAS"
                 registrar_evento_auditoria("Inicio de Sesión", nombre_usuario, "-", "-", "-", "Supervisor ingresó al sistema.")
                 st.success(f"Bienvenido {nombre_usuario}")
                 st.rerun()
             elif nombre_usuario == "Víctor (Contador)" and hmac.compare_digest(password, pass_auditor):
                 st.session_state.usuario_autenticado = "Víctor (Contador)"
                 st.session_state.rol = "Contador Auditor"
-                st.session_state.sucursal_asignada = "TODAS" # Variable clave añadida
+                st.session_state.sucursal_asignada = "TODAS"
                 registrar_evento_auditoria("Inicio de Sesión", "Víctor (Contador)", "-", "-", "-", "Contador Auditor ingresó al panel de control.")
                 st.success("Acceso concedido como Contador Auditor")
                 st.rerun()
             else:
                 st.error("❌ Contraseña incorrecta o usuario no seleccionado.")
+                st.stop()
+                
         st.stop()
 
 # =========================================================================
