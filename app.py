@@ -1725,7 +1725,6 @@ if st.session_state.usuario_autenticado is None:
                 st.rerun()
             else:
                 st.error("❌ Contraseña incorrecta o usuario no seleccionado.")
-                
         st.stop()
 
 # =========================================================================
