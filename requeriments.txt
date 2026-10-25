@@ -7,3 +7,6 @@ cryptography>=41.0.0
 pytesseract>=0.3.10
 supabase>=2.3.0
 reportlab>=4.0
+streamlit
+duckduckgo-search
+
