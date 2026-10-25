@@ -1,0 +1,10 @@
+anthropic>=0.40
+python-dotenv>=1.0
+pillow>=10.0
+streamlit>=1.30
+# Voz (opcional; sin ellas usa: python main.py --text)
+SpeechRecognition>=3.10
+pyttsx3>=2.90
+PyAudio>=0.2.14
+# Control visual del escritorio (opcional)
+pyautogui>=0.9.54
