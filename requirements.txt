@@ -1,7 +1,13 @@
-anthropic>=0.40
-python-dotenv>=1.0
-pillow>=10.0
-streamlit>=1.30
-# Voz (opcional; sin ellas usa: python main.py --text)
-# Control visual del escritorio (opcional)
-
+streamlit
+pandas
+numpy
+openpyxl
+xlsxwriter
+Pillow
+qrcode[pil]
+anthropic
+opencv-python-headless
+zxing-cpp
+pyzbar
+google-genai
+pypdf
